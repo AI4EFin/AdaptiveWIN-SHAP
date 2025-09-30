@@ -9,8 +9,8 @@ import pandas as pd
 from adaptivewinshap import AdaptiveModel, ChangeDetector
 
 class AdaptiveLSTM(AdaptiveModel):
-    def __init__(self, seq_length=3, input_size=1, hidden=64, layers=1, dropout=0.0):
-        super().__init__()
+    def __init__(self, seq_length, input_size, hidden, layers, dropout, device="cpu", batch_size=512, lr=1e-12, epochs=50, type_precision=np.float32):
+        super().__init__(device=device, batch_size=batch_size, lr=lr, epochs=epochs, type_precision=type_precision)
         self.lstm = nn.LSTM(input_size, hidden, num_layers=layers, batch_first=True,
                             dropout=dropout if layers > 1 else 0.0)
         self.fc = nn.Linear(hidden, 1)
@@ -26,7 +26,6 @@ class AdaptiveLSTM(AdaptiveModel):
         L = self.seq_len
         n = len(window)
         if n <= L: return None, None
-
         X = np.lib.stride_tricks.sliding_window_view(window, L + 1)  # [N, L+1]
         X, y = X[:, :-1], X[:, -1]  # [N,L], [N]
 
@@ -49,22 +48,30 @@ if __name__ == "__main__":
     LSTM_SEQ_LEN = 3
     LSTM_HIDDEN = 16
     LSTM_LAYERS = 1
-    LSTM_EPOCHS = 15
+    LSTM_EPOCHS = 50
     LSTM_BATCH = 64
     LSTM_LR = 1e-2
     LSTM_DROPOUT = 0.0
-    MIN_SEG = 20
 
-    df = pd.read_csv("examples/data.csv")
+    df = pd.read_csv("examples/datasets/data.csv")
     print(df.head())
 
-    model = AdaptiveLSTM()
+    model = AdaptiveLSTM(seq_length=LSTM_SEQ_LEN, input_size=1, hidden=LSTM_HIDDEN, layers=LSTM_LAYERS,
+                         dropout=LSTM_DROPOUT, device=DEVICE, batch_size=LSTM_BATCH, lr=LSTM_LR, epochs=LSTM_EPOCHS,
+                         type_precision=np.float32)
 
-    cd = ChangeDetector(model, df["N"].to_numpy(dtype=np.float32), debug=True)
+    cd = ChangeDetector(model, df["N"].to_numpy(dtype=np.float32), debug=False)
 
     out_dir = os.path.join("examples", "results")
     os.makedirs(out_dir, exist_ok=True)
     out_csv = os.path.join(out_dir, "lstm_simulation.csv")
 
-    results = cd.detect()
+    MIN_SEG = 20
+    N_0=100
+    JUMP=1
+    STEP=5
+    ALPHA=0.95
+    NUM_BOOTSTRAP = 1
+
+    results = cd.detect(min_window=MIN_SEG, n_0=N_0, jump=JUMP, search_step=STEP, alpha=ALPHA, num_bootstrap=NUM_BOOTSTRAP)
     print(f"Saved results to: {out_csv}")

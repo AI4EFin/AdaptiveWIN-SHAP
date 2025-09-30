@@ -6,22 +6,23 @@ from torch.utils.data import DataLoader, TensorDataset
 
 
 class AdaptiveModel(nn.Module):
-    def __init__(self, device="cpu", batch_size=512, type_precision=np.float32):
+    def __init__(self, device="cpu", batch_size=512, lr=1e-12, epochs=50, type_precision=np.float32):
         super().__init__()
         self.device = device
         self.batch_size = batch_size
+        self.lr = lr
+        self.epochs = epochs
         self.type_precision = type_precision
 
-    def fit(self, window, batch_size=512, epochs=50, lr=1e-2):
-        X_tensor, y_tensor = self.prepare_data(window, 0)
-        ds = TensorDataset(X_tensor, y_tensor)
-        dl = DataLoader(ds, batch_size=batch_size, shuffle=False)
+    def fit(self, X, y):
+        ds = TensorDataset(X, y)
+        dl = DataLoader(ds, batch_size=self.batch_size, shuffle=False)
 
         model = self.to(self.device)
-        opt = torch.optim.AdamW(model.parameters(), lr=lr)
+        opt = torch.optim.AdamW(model.parameters(), lr=self.lr)
         loss_fn = nn.MSELoss()
 
-        for _ in range(epochs):
+        for _ in range(self.epochs):
             model.train()
             for xb, yb in dl:
                 xb = xb.to(self.device)
@@ -42,8 +43,8 @@ class AdaptiveModel(nn.Module):
         return np.sum(residuals**2)
 
     @staticmethod
-    def mse(sse):
-        return sse / max(len(sse), 1)
+    def mse(sse, n):
+        return sse / max(n, 1)
 
     @staticmethod
     def likelihood(sse, n):
@@ -62,8 +63,7 @@ class AdaptiveModel(nn.Module):
         return X_tensor, y_tensor, t_abs
 
     def diagnostics(self, X, y, batch_size=512):
-        X_tensor, y_tensor = self.prepare_data(X, y)
-        ds = TensorDataset(X_tensor, y_tensor)
+        ds = TensorDataset(X, y)
 
         self.eval()
         with torch.no_grad():
@@ -80,6 +80,6 @@ class AdaptiveModel(nn.Module):
         resid = AdaptiveModel.residuals(y_true, yhat)
         sse = AdaptiveModel.sse(resid)
         m = int(y_true.shape[0])
-        mse = AdaptiveModel.mse(sse)
+        mse = AdaptiveModel.mse(sse, m)
         likelihood = AdaptiveModel.likelihood(sse, m)
         return likelihood, yhat, resid, sse, mse, m
