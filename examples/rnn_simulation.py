@@ -130,7 +130,7 @@ if __name__ == "__main__":
     JUMP = 1
     STEP = 5
     ALPHA = 0.95
-    NUM_BOOTSTRAP = 1
+    NUM_BOOTSTRAP = 5
 
     print(f"Running change detection with RNN...")
     print(f"Sequence length: {RNN_SEQ_LEN}")
