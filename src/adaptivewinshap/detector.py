@@ -206,67 +206,13 @@ class ChangeDetector:
                 continue
 
         # Reverse to align like your original flow
-        windows.reverse();
-        mse_vals.reverse();
-        rmse_vals.reverse();
+        windows.reverse()
+        mse_vals.reverse()
+        rmse_vals.reverse()
         scaled_windows.reverse()
-        DT_N["windows_1"] = pd.Series(windows)
-        DT_N["scaled_windows_1"] = pd.Series(scaled_windows)
-        DT_N["MSE_lstm_1"] = pd.Series(mse_vals)
-        DT_N["RMSE_lstm_1"] = pd.Series(rmse_vals)
+        DT_N["windows"] = pd.Series(windows)
+        DT_N["scaled_windows"] = pd.Series(scaled_windows)
+        DT_N["MSE"] = pd.Series(mse_vals)
+        DT_N["RMSE"] = pd.Series(rmse_vals)
 
         return DT_N, tests
-
-
-# Data. Generated with: https://github.com/QuantLet/AR_sim_p/tree/main
-# df = pd.read_csv("LPA/Simulation/data.csv")
-#
-# # ----------------------------
-# # Example: repeat experiment num_runs times
-# # ----------------------------
-# if __name__ == "__main__":
-#     # ======= experiment config =======
-#     num_runs = 10  # total repetitions of the whole experiment
-#     boot_B = 10
-#     alpha = 0.95
-#     n_0 = 100
-#     search_step = 10  # int(n_0 / 5)
-#     epochs = 50
-#     jump = 50
-#     # =================================
-#
-#     dir_path = f"LPA/Simulation/Jump_{jump}_N0_{n_0}"
-#     try:
-#         os.makedirs(dir_path, exist_ok=True)
-#     except OSError as e:
-#         print(f"Error: {e}")
-#
-#     n_total = 1500
-#     coeffs = [
-#         (0.9, 0.01, 0.01),
-#         (0.01, 0.9, 0.01),
-#         (0.01, 0.01, 0.9),
-#     ]
-#     change_points = [0, 500, 1000]
-#
-#     for run in range(num_runs):
-#         print(f"\n=== RUN {run + 1}/{num_runs} ===")
-#
-#         Data_N = df["N"].to_numpy(dtype=np.float32)
-#
-#         DT_out, total_tests = detect_changes_with_lstm(
-#             Data_N,
-#             seq_len=LSTM_SEQ_LEN,
-#             n_0=n_0,
-#             jump=jump,
-#             search_step=search_step,
-#             c=1.35,
-#             alpha=alpha,
-#             num_bootstrap=boot_B,
-#             epochs=LSTM_EPOCHS,
-#             val_frac=0.2
-#         )
-#         out_name = f"{dir_path}/LSTM_{n_total}_run{run:03d}_n{n_0}_alpha{alpha}_bootB{boot_B}.csv"
-#         DT_out.to_csv(out_name, index=False)
-#         print(f"Saved results to: {out_name}")
-
