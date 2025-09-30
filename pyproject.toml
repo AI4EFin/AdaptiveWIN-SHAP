@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "adaptivewinshap"
+version = "0.1.0"
+description = "Adaptive window LSTM change detection utilities."
+authors = [
+  { name = "Raul Cristian Bag" }, { name = "Stefan Lessmann" }, { name = "Wolfgang Karl Härdle" }, { name = "Daniel Traian pele" }
+]
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+keywords = ["time-series", "change-detection", "lstm", "pytorch", "bootstrap"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+]
+dependencies = [
+  "numpy>=1.22",
+  "pandas>=1.5",
+  "torch>=2.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
