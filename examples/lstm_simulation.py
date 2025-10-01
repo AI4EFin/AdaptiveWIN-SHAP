@@ -48,7 +48,7 @@ if __name__ == "__main__":
     DEVICE = "cpu"
     if torch.cuda.is_available():
         DEVICE = "cuda"
-    if torch.mps.is_available():
+    elif torch.mps.is_available():
         DEVICE = "mps"
 
     LSTM_SEQ_LEN = 3
