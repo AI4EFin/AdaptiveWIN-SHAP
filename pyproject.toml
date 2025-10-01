@@ -19,9 +19,10 @@ classifiers = [
   "Operating System :: OS Independent",
 ]
 dependencies = [
-  "numpy>=1.22",
-  "pandas>=1.5",
-  "torch>=2.0",
+    "numpy>=1.22",
+    "pandas>=1.5",
+    "torch>=2.0",
+    "joblib>=1.5.2",
 ]
 
 [project.urls]

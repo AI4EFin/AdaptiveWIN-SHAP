@@ -6,15 +6,21 @@ import torch
 import torch.nn as nn
 import pandas as pd
 
-from adaptivewinshap import AdaptiveModel, ChangeDetector
+from adaptivewinshap import AdaptiveModel, ChangeDetector, store_init_kwargs
+
 
 class AdaptiveLSTM(AdaptiveModel):
-    def __init__(self, seq_length, input_size, hidden, layers, dropout, device="cpu", batch_size=512, lr=1e-12, epochs=50, type_precision=np.float32):
+    @store_init_kwargs
+    def __init__(self, seq_length=3, input_size=1, hidden=16, layers=1, dropout=0.2, device="cpu", batch_size=512, lr=1e-12, epochs=50, type_precision=np.float32):
         super().__init__(device=device, batch_size=batch_size, lr=lr, epochs=epochs, type_precision=type_precision)
         self.lstm = nn.LSTM(input_size, hidden, num_layers=layers, batch_first=True,
                             dropout=dropout if layers > 1 else 0.0)
         self.fc = nn.Linear(hidden, 1)
-        self.seq_len = seq_length
+        self.seq_length = seq_length
+        self.input_size = input_size
+        self.hidden = hidden
+        self.layers = layers
+        self.dropout = dropout
 
 
     def forward(self, x):
@@ -23,7 +29,7 @@ class AdaptiveLSTM(AdaptiveModel):
         return yhat.squeeze(-1)
 
     def prepare_data(self, window, start_abs_idx):
-        L = self.seq_len
+        L = self.seq_length
         n = len(window)
         if n <= L: return None, None
         X = np.lib.stride_tricks.sliding_window_view(window, L + 1)  # [N, L+1]
@@ -56,11 +62,10 @@ if __name__ == "__main__":
     df = pd.read_csv("examples/datasets/data.csv")
     print(df.head())
 
-    model = AdaptiveLSTM(seq_length=LSTM_SEQ_LEN, input_size=1, hidden=LSTM_HIDDEN, layers=LSTM_LAYERS,
-                         dropout=LSTM_DROPOUT, device=DEVICE, batch_size=LSTM_BATCH, lr=LSTM_LR, epochs=LSTM_EPOCHS,
-                         type_precision=np.float32)
+    model = AdaptiveLSTM(seq_length=LSTM_SEQ_LEN, input_size=1, hidden=LSTM_HIDDEN, layers=LSTM_LAYERS, dropout=LSTM_DROPOUT,
+                         device=DEVICE, batch_size=LSTM_BATCH, lr=LSTM_LR, epochs=LSTM_EPOCHS, type_precision=np.float32)
 
-    cd = ChangeDetector(model, df["N"].to_numpy(dtype=np.float32), debug=False)
+    cd = ChangeDetector(model, df["N"].to_numpy(dtype=np.float32), debug=True)
 
     out_dir = os.path.join("examples", "results")
     os.makedirs(out_dir, exist_ok=True)

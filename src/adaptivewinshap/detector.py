@@ -5,6 +5,8 @@ import numpy as np
 import pandas as pd
 import torch
 
+from joblib import Parallel, delayed
+
 from .model import AdaptiveModel
 
 
@@ -28,11 +30,22 @@ class ChangeDetector:
         w = np.where(u < p, a, b).astype(np.float32)
         return w
 
+    # A small factory so each worker uses a fresh model instance.
+    # If your model can be reconstructed via something like `type(self.model)(**self.model.init_kwargs)`,
+    # encode that here. Otherwise, if self.model is stateless & picklable, you can pass a lambda returning self.model.
+    def construct_new_model(self):
+        # Example: clone by re-calling the class with same config
+        # Adjust to your actual model construction needs.
+        return type(self.model)(**self.model.init_kwargs)
+
     # ----------------------------
     # Detection run (with weighted bootstrap retraining)
     # ----------------------------
-    def detect(self, min_window=3, n_0=200, jump=10, search_step=5, alpha=0.95, num_bootstrap=50):
+    def detect(self, min_window=3, n_0=200, jump=10, search_step=5, alpha=0.95, num_bootstrap=50, t_workers=-1, b_workers=-1, one_b_threads=-1):
         """
+        t_workers: int, default -1 (use all available). Workers used to parallelize the test statistic.
+        b_workers: int, default -1 (use all available). Workers used to parallelize the bootstrap.
+        one_b_threads: int, default -1 (use all available). Workers used to parallelize the inner loop of a bootstrap.
         data: 1D numpy array (time series)
         Returns (DataFrame, tests) with diagnostics per step.
         Uses OOS MSE and **per-batch weighted retraining** in bootstrap if enabled.
@@ -59,6 +72,7 @@ class ChangeDetector:
             n_k_minus1 = n_0
 
             for k in range(1, K + 1):
+                start_k_time = time.time()
                 # arithmetic
                 n_k = (k + 1) * n_0
                 n_k_plus1 = (k + 2) * n_0
@@ -76,7 +90,7 @@ class ChangeDetector:
                     continue
 
                 # --- Global null fit on I_{k+1} (observed) ---
-                likelihood_i, yhat_i, resid_i, _, _, _ = self.model.fit(X_all, y_all).diagnostics(X_all, y_all)
+                likelihood_i, yhat_i, resid_i, _, _, _ = self.construct_new_model().fit(X_all, y_all).diagnostics(X_all, y_all)
 
                 # Candidate split range
                 J_start = max(min_window, io - n_k)  # have enough left history
@@ -88,66 +102,16 @@ class ChangeDetector:
                 # Candidate split range in ABSOLUTE target indices
                 J_abs = np.arange(J_start, J_end, search_step, dtype=np.int64)
 
-                T_vals = []
-
                 # --- Observed T(i) across splits ---
-                for i_abs in J_abs:
-                    if self.debug == True:
-                        print(f"tau={i_abs}")
-                    # Strict no-leak masks by target index
-                    Lmask = t_abs <= i_abs
-                    Rmask = t_abs > i_abs
-                    mA = int(np.sum(Lmask))
-                    mB = int(np.sum(Rmask))
-                    if mA < 20 or mB < 20:  # min targets per side; tune as needed
-                        T_vals.append(0.0)
-                        continue
-                    likelihood_a, _, _, _, _, _ = self.model.fit(X_all[Lmask], y_all[Lmask]).diagnostics(X_all[Lmask], y_all[Lmask])
-                    likelihood_b, _, _, _, _, _ = self.model.fit(X_all[Rmask], y_all[Rmask]).diagnostics(X_all[Rmask], y_all[Rmask])
-
-                    Ti = likelihood_a + likelihood_b - likelihood_i
-                    T_vals.append(max(0.0, Ti))
+                T_vals = self.compute_T_vals(X_all, y_all, likelihood_i, J_abs, t_abs, t_workers)
 
                 # --- Bootstrap critical values via wild residual bootstrap under the null ---
                 if num_bootstrap <= 0:
                     raise ValueError(f"Num bootstrap must be at least 1. {num_bootstrap} provided")
 
-                rng = np.random.default_rng()  # SEED
-                Sup_boot = np.empty(num_bootstrap, dtype=np.float64)  # store sup over splits for each b
+                Sup_boot = self.calculate_t_bootstrap(X_all, yhat_i, resid_i, J_abs, t_abs, num_bootstrap, min_seg=min_window, n_jobs=b_workers, n_inner_threads=one_b_threads, batch_size=512)
 
-                for b in range(num_bootstrap):
-                    # multipliers (choose Mammen or Rademacher)
-                    w = None
-                    if self.weights == "mammen":
-                        w = ChangeDetector.draw_mammen(len(resid_i), rng)
-                    elif self.weights == "rademacher":
-                        w = ChangeDetector.draw_rademacher(len(resid_i), rng)
-                    else:
-                        raise ValueError(f"Weights {self.weights} not supported. Use 'mammen' or 'rademacher'")
-
-                    y_star = (yhat_i + w * resid_i)
-                    y_star_tensor = torch.from_numpy(y_star)
-
-                    # Refit global null on y* to get SSE_I*
-                    likelihood_i_b, _, _, _, _, _ = self.model.fit(X_all, y_star_tensor).diagnostics(X_all, y_star_tensor)
-
-                    # Sweep splits and take sup
-                    sup_b = 0.0
-                    for i_abs in J_abs:
-                        Lmask = t_abs <= i_abs
-                        Rmask = t_abs > i_abs
-                        mA = int(np.sum(Lmask))
-                        mB = int(np.sum(Rmask))
-                        if mA < 20 or mB < 20:  # same min-seg rule
-                            continue
-                        likelihood_a_b, _, _, _, _, _ = self.model.fit(X_all[Lmask], y_star_tensor[Lmask]).diagnostics(X_all[Lmask], y_star_tensor[Lmask])
-                        likelihood_b_b, _, _, _, _, _ = self.model.fit(X_all[Rmask], y_star_tensor[Rmask]).diagnostics(X_all[Rmask], y_star_tensor[Rmask])
-
-                        Ti_b = likelihood_a_b + likelihood_b_b - likelihood_i_b
-
-                        if Ti_b > sup_b: sup_b = Ti_b
-                    Sup_boot[b] = max(0.0, sup_b)
-
+                end_k_time = time.time()
                 # --- Decision for the current window ---
                 if len(T_vals) > 0:
                     test_value = float(np.max(T_vals))
@@ -155,7 +119,7 @@ class ChangeDetector:
                     print(
                         f"[QLR] step={l} |I_k+1=[{max(0, io - n_k_plus1)}, {io}] | I_k=[{max(0, io - n_k)}, {io}]  |"
                         f"I_k-1=[{max(0, io - n_k_minus1)}, {io}] | J_k=[{J_start}, {J_end}] | k={k} | "
-                        f"SupLR={test_value:.3f} | crit({alpha:.2f})={critical_value:.3f} | #splits={len(T_vals)} | B={num_bootstrap}")
+                        f"SupLR={test_value:.3f} | crit({alpha:.2f})={critical_value:.3f} | #splits={len(T_vals)} | B={num_bootstrap} | time/k={end_k_time - start_k_time:.2f}s")
                 else:
                     test_value, critical_value = 0.0, math.inf
 
@@ -197,3 +161,126 @@ class ChangeDetector:
         DT_N["RMSE"] = pd.Series(rmse_vals)
 
         return DT_N, tests
+
+    def compute_T_vals(self, X_all, y_all, likelihood_i, J_abs, t_abs, max_processes):
+        def safe_calc(i_abs):
+            try:
+                Ti = self.calculate_t(X_all, y_all, likelihood_i, i_abs, t_abs)
+                return max(0.0, Ti)
+            except ValueError:
+                return 0.0
+
+        # prefer="processes" → multi-process;
+        T_vals = Parallel(n_jobs=max_processes, prefer="processes", batch_size='auto')(delayed(safe_calc)(i) for i in J_abs)
+        return T_vals
+
+    def calculate_t(self, X_all, y_all, likelihood_i, i_abs, t_abs):
+        if self.debug == True:
+            print(f"tau={i_abs}")
+        # Strict no-leak masks by target index
+        Lmask = t_abs <= i_abs
+        Rmask = t_abs > i_abs
+        mA = int(np.sum(Lmask))
+        mB = int(np.sum(Rmask))
+        if mA < 20 or mB < 20:  # min targets per side; tune as needed
+            raise ValueError(f"Too few targets for split {i_abs}")
+        likelihood_a, _, _, _, _, _ = self.construct_new_model().fit(X_all[Lmask], y_all[Lmask]).diagnostics(X_all[Lmask],
+                                                                                             y_all[Lmask])
+        likelihood_b, _, _, _, _, _ = self.construct_new_model().fit(X_all[Rmask], y_all[Rmask]).diagnostics(X_all[Rmask],
+                                                                                             y_all[Rmask])
+
+        Ti = likelihood_a + likelihood_b - likelihood_i
+        return Ti
+
+    def _Ti_for_mask(self, X_all, y_star_t, Lmask, Rmask, min_seg, likelihood_i_b):
+        # returns 0.0 if segment too small
+        mA = int(Lmask.sum())
+        mB = int(Rmask.sum())
+        if mA < min_seg or mB < min_seg:
+            return 0.0
+        model = self.construct_new_model()
+        likelihood_a_b, *_ = model.fit(X_all[Lmask], y_star_t[Lmask]).diagnostics(
+            X_all[Lmask], y_star_t[Lmask]
+        )
+        likelihood_b_b, *_ = model.fit(X_all[Rmask], y_star_t[Rmask]).diagnostics(
+            X_all[Rmask], y_star_t[Rmask]
+        )
+        return likelihood_a_b + likelihood_b_b - likelihood_i_b
+
+    def _draw_weights(self, kind: str, n: int, rng: np.random.Generator):
+        if kind == "mammen":
+            # assuming these static methods exist on ChangeDetector
+            return ChangeDetector.draw_mammen(n, rng)
+        elif kind == "rademacher":
+            return ChangeDetector.draw_rademacher(n, rng)
+        else:
+            raise ValueError(f"Weights {kind} not supported. Use 'mammen' or 'rademacher'.")
+
+    def _one_bootstrap(
+            self,
+            X_all,
+            yhat_i,
+            resid_i,
+            masks,  # list[(Lmask, Rmask)]
+            weights_kind: str,
+            min_seg: int = 20,
+            inner_jobs: int = 1,  # NEW: threads per worker for masks
+    ):
+        rng = np.random.default_rng()
+
+        # 1) multipliers & pseudo response
+        w = self._draw_weights(weights_kind, len(resid_i), rng)
+        y_star = (yhat_i + w * resid_i)
+        y_star_t = torch.from_numpy(y_star)
+
+        # 2) global null likelihood (shared within this bootstrap)
+        model = self.construct_new_model()
+        likelihood_i_b, *_ = model.fit(X_all, y_star_t).diagnostics(X_all, y_star_t)
+
+        # 3) parallel sweep across masks using threads
+        if inner_jobs == 1:
+            # fast path: no threading, just a loop
+            sup_b = 0.0
+            for Lmask, Rmask in masks:
+                Ti_b = self._Ti_for_mask(X_all, y_star_t, Lmask, Rmask, min_seg, likelihood_i_b)
+                if Ti_b > sup_b:
+                    sup_b = Ti_b
+        else:
+            # threaded inner parallelism (avoid processes-inside-processes)
+            Ti_list = Parallel(n_jobs=inner_jobs, backend="threading", batch_size="auto")(
+                delayed(self._Ti_for_mask)(
+                    X_all, y_star_t, Lmask, Rmask, min_seg, likelihood_i_b
+                )
+                for (Lmask, Rmask) in masks
+            )
+            sup_b = max(Ti_list) if Ti_list else 0.0
+
+        return max(0.0, sup_b)
+
+    def calculate_t_bootstrap(self, X_all, yhat_i, resid_i, J_abs, t_abs, num_bootstrap, min_seg=20, n_jobs=-1, n_inner_threads=-1, batch_size=512):
+        """
+                Parallel bootstrap over `b` replicates using joblib.
+                Returns: array shape (num_bootstrap,)
+                """
+
+        # Precompute masks for every split once (depends only on t_abs & J_abs)
+        masks = []
+        for i_abs in J_abs:
+            Lmask = (t_abs <= i_abs)
+            Rmask = ~Lmask  # faster than recomputing
+            masks.append((Lmask, Rmask))
+
+        # Parallel loop over bootstrap draws
+        Sup_boot_list = Parallel(n_jobs=n_jobs, prefer="processes", batch_size=batch_size)(
+            delayed(self._one_bootstrap)(
+                X_all=X_all,
+                yhat_i=yhat_i,
+                resid_i=resid_i,
+                masks=masks,
+                weights_kind=self.weights,
+                min_seg=min_seg,
+                inner_jobs=n_inner_threads,
+            )
+            for _ in range(num_bootstrap)
+        )
+        return np.asarray(Sup_boot_list, dtype=np.float64)

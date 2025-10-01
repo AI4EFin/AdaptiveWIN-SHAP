@@ -4,6 +4,8 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 
+from .utils import store_init_kwargs
+
 
 class AdaptiveModel(nn.Module):
     def __init__(self, device="cpu", batch_size=512, lr=1e-12, epochs=50, type_precision=np.float32):
