@@ -79,5 +79,5 @@ if __name__ == "__main__":
     NUM_BOOTSTRAP = 1
 
     results = cd.detect(min_window=MIN_SEG, n_0=N_0, jump=JUMP, search_step=STEP, alpha=ALPHA, num_bootstrap=NUM_BOOTSTRAP,
-                        t_workers=7, b_workers=7, one_b_threads=1)
+                        t_workers=4, b_workers=4, one_b_threads=4)
     print(f"Saved results to: {out_csv}")
