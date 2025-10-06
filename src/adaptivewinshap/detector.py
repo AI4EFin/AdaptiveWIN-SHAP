@@ -17,7 +17,7 @@ class ChangeDetector:
         self.debug = debug
         self.weights = weights
         self.previous_device = 0
-        self.force_cpu = False
+        self.force_cpu = force_cpu
 
     @staticmethod
     def draw_rademacher(m, rng):
