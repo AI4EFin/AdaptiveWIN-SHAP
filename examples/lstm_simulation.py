@@ -65,7 +65,7 @@ if __name__ == "__main__":
     model = AdaptiveLSTM(seq_length=LSTM_SEQ_LEN, input_size=1, hidden=LSTM_HIDDEN, layers=LSTM_LAYERS, dropout=LSTM_DROPOUT,
                          device=DEVICE, batch_size=LSTM_BATCH, lr=LSTM_LR, epochs=LSTM_EPOCHS, type_precision=np.float32)
 
-    cd = ChangeDetector(model, df["N"].to_numpy(dtype=np.float32), debug=True)
+    cd = ChangeDetector(model, df["N"].to_numpy(dtype=np.float32), debug=True, force_cpu=True)
 
     out_dir = os.path.join("examples", "results")
     os.makedirs(out_dir, exist_ok=True)
@@ -74,7 +74,7 @@ if __name__ == "__main__":
     MIN_SEG = 20
     N_0=100
     JUMP=1
-    STEP=5
+    STEP=1
     ALPHA=0.95
     NUM_BOOTSTRAP = 1
 

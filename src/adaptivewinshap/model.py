@@ -11,6 +11,7 @@ class AdaptiveModel(nn.Module):
     def __init__(self, device="cpu", batch_size=512, lr=1e-12, epochs=50, type_precision=np.float32):
         super().__init__()
         self.device = device
+        print(self.device)
         self.batch_size = batch_size
         self.lr = lr
         self.epochs = epochs
@@ -72,7 +73,7 @@ class AdaptiveModel(nn.Module):
             all_pred, all_y = [], []
             evl = DataLoader(ds, batch_size=batch_size, shuffle=False)
             for xb, yb in evl:
-                xb = xb.to(self.device);
+                xb = xb.to(self.device)
                 yb = yb.to(self.device)
                 pred = self(xb)
                 all_pred.append(pred.cpu().numpy())

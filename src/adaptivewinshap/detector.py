@@ -11,11 +11,13 @@ from .model import AdaptiveModel
 
 
 class ChangeDetector:
-    def __init__(self, model: AdaptiveModel, data, weights="mammen", debug=False):
+    def __init__(self, model: AdaptiveModel, data, weights="mammen", debug=False, force_cpu=False):
         self.model = model
         self.data = data
         self.debug = debug
         self.weights = weights
+        self.previous_device = 0
+        self.force_cpu = False
 
     @staticmethod
     def draw_rademacher(m, rng):
@@ -36,7 +38,14 @@ class ChangeDetector:
     def construct_new_model(self):
         # Example: clone by re-calling the class with same config
         # Adjust to your actual model construction needs.
-        return type(self.model)(**self.model.init_kwargs)
+        # CUDA first (multi-GPU)
+        kwargs = self.model.init_kwargs
+        if torch.cuda.is_available() and torch.cuda.device_count() > 1:
+            kwargs["device"] = torch.device(f"cuda:{self.previous_device}")
+            self.previous_device = (self.previous_device + 1) if self.previous_device < torch.cuda.device_count() - 1 else 0
+        if self.force_cpu:
+            kwargs["device"] = torch.device("cpu")
+        return type(self.model)(kwargs)
 
     # ----------------------------
     # Detection run (with weighted bootstrap retraining)
@@ -198,11 +207,10 @@ class ChangeDetector:
         mB = int(Rmask.sum())
         if mA < min_seg or mB < min_seg:
             return 0.0
-        model = self.construct_new_model()
-        likelihood_a_b, *_ = model.fit(X_all[Lmask], y_star_t[Lmask]).diagnostics(
+        likelihood_a_b, *_ = self.construct_new_model().fit(X_all[Lmask], y_star_t[Lmask]).diagnostics(
             X_all[Lmask], y_star_t[Lmask]
         )
-        likelihood_b_b, *_ = model.fit(X_all[Rmask], y_star_t[Rmask]).diagnostics(
+        likelihood_b_b, *_ = self.construct_new_model().fit(X_all[Rmask], y_star_t[Rmask]).diagnostics(
             X_all[Rmask], y_star_t[Rmask]
         )
         return likelihood_a_b + likelihood_b_b - likelihood_i_b
