@@ -56,12 +56,11 @@ class ChangeDetector:
         b_workers: int, default -1 (use all available). Workers used to parallelize the bootstrap.
         one_b_threads: int, default -1 (use all available). Workers used to parallelize the inner loop of a bootstrap.
         data: 1D numpy array (time series)
-        Returns (DataFrame, tests) with diagnostics per step.
+        Returns DataFrame with diagnostics per step.
         Uses OOS MSE and **per-batch weighted retraining** in bootstrap if enabled.
         """
         DT_N = pd.DataFrame({"Date": np.arange(len(self.data)), "N": self.data})
         windows, mse_vals, rmse_vals, likelihoods, scaled_windows = [], [], [], [], []
-        tests = 0
 
         io = self.data.shape[0]  # starting from final time
         I_0 = list(self.data[max(0, io - n_0):io])
@@ -169,7 +168,7 @@ class ChangeDetector:
         DT_N["MSE"] = pd.Series(mse_vals)
         DT_N["RMSE"] = pd.Series(rmse_vals)
 
-        return DT_N, tests
+        return DT_N
 
     def compute_T_vals(self, X_all, y_all, likelihood_i, J_abs, t_abs, max_processes):
         def safe_calc(i_abs):
@@ -207,10 +206,10 @@ class ChangeDetector:
         mB = int(Rmask.sum())
         if mA < min_seg or mB < min_seg:
             return 0.0
-        likelihood_a_b, *_ = self.construct_new_model().fit(X_all[Lmask], y_star_t[Lmask]).diagnostics(
+        likelihood_a_b, _, _, _, _, _ = self.construct_new_model().fit(X_all[Lmask], y_star_t[Lmask]).diagnostics(
             X_all[Lmask], y_star_t[Lmask]
         )
-        likelihood_b_b, *_ = self.construct_new_model().fit(X_all[Rmask], y_star_t[Rmask]).diagnostics(
+        likelihood_b_b, _, _, _, _, _ = self.construct_new_model().fit(X_all[Rmask], y_star_t[Rmask]).diagnostics(
             X_all[Rmask], y_star_t[Rmask]
         )
         return likelihood_a_b + likelihood_b_b - likelihood_i_b
