@@ -43,8 +43,8 @@ class ChangeDetector:
         if torch.cuda.is_available() and torch.cuda.device_count() > 1:
             kwargs["device"] = torch.device(f"cuda:{self.previous_device}")
             self.previous_device = (self.previous_device + 1) if self.previous_device < torch.cuda.device_count() - 1 else 0
-        if self.force_cpu:
-            kwargs["device"] = torch.device("cpu")
+        # if self.force_cpu == True:
+        #     kwargs["device"] = torch.device("cpu")
         return type(self.model)(kwargs)
 
     # ----------------------------
