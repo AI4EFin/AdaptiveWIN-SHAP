@@ -19,7 +19,6 @@ class AdaptiveModel(nn.Module):
     def fit(self, X, y):
         ds = TensorDataset(X, y)
         dl = DataLoader(ds, batch_size=self.batch_size, shuffle=False)
-        print(self.device)
         model = self.to(self.device)
         opt = torch.optim.AdamW(model.parameters(), lr=self.lr)
         loss_fn = nn.MSELoss()
