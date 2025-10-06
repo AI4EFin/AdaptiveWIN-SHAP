@@ -8,10 +8,9 @@ from .utils import store_init_kwargs
 
 
 class AdaptiveModel(nn.Module):
-    def __init__(self, device="cpu", batch_size=512, lr=1e-12, epochs=50, type_precision=np.float32):
+    def __init__(self, device, batch_size=512, lr=1e-12, epochs=50, type_precision=np.float32):
         super().__init__()
         self.device = device
-        print(self.device)
         self.batch_size = batch_size
         self.lr = lr
         self.epochs = epochs
@@ -20,7 +19,7 @@ class AdaptiveModel(nn.Module):
     def fit(self, X, y):
         ds = TensorDataset(X, y)
         dl = DataLoader(ds, batch_size=self.batch_size, shuffle=False)
-
+        print(self.device)
         model = self.to(self.device)
         opt = torch.optim.AdamW(model.parameters(), lr=self.lr)
         loss_fn = nn.MSELoss()

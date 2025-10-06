@@ -11,7 +11,7 @@ from adaptivewinshap import AdaptiveModel, ChangeDetector, store_init_kwargs
 
 class AdaptiveLSTM(AdaptiveModel):
     @store_init_kwargs
-    def __init__(self, seq_length=3, input_size=1, hidden=16, layers=1, dropout=0.2, device="cpu", batch_size=512, lr=1e-12, epochs=50, type_precision=np.float32):
+    def __init__(self, device, seq_length=3, input_size=1, hidden=16, layers=1, dropout=0.2, batch_size=512, lr=1e-12, epochs=50, type_precision=np.float32):
         super().__init__(device=device, batch_size=batch_size, lr=lr, epochs=epochs, type_precision=type_precision)
         self.lstm = nn.LSTM(input_size, hidden, num_layers=layers, batch_first=True,
                             dropout=dropout if layers > 1 else 0.0)
@@ -50,7 +50,6 @@ if __name__ == "__main__":
         DEVICE = "cuda"
     elif torch.mps.is_available():
         DEVICE = "mps"
-
     LSTM_SEQ_LEN = 3
     LSTM_HIDDEN = 16
     LSTM_LAYERS = 1
@@ -60,12 +59,11 @@ if __name__ == "__main__":
     LSTM_DROPOUT = 0.0
 
     df = pd.read_csv("examples/datasets/data.csv")
-    print(df.head())
 
-    model = AdaptiveLSTM(seq_length=LSTM_SEQ_LEN, input_size=1, hidden=LSTM_HIDDEN, layers=LSTM_LAYERS, dropout=LSTM_DROPOUT,
-                         device=DEVICE, batch_size=LSTM_BATCH, lr=LSTM_LR, epochs=LSTM_EPOCHS, type_precision=np.float32)
+    model = AdaptiveLSTM(DEVICE, seq_length=LSTM_SEQ_LEN, input_size=1, hidden=LSTM_HIDDEN, layers=LSTM_LAYERS, dropout=LSTM_DROPOUT,
+                         batch_size=LSTM_BATCH, lr=LSTM_LR, epochs=LSTM_EPOCHS, type_precision=np.float32)
 
-    cd = ChangeDetector(model, df["N"].to_numpy(dtype=np.float32), debug=True, force_cpu=True)
+    cd = ChangeDetector(model, df["N"].to_numpy(dtype=np.float32), debug=True, force_cpu=False)
 
     out_dir = os.path.join("examples", "results")
     os.makedirs(out_dir, exist_ok=True)
