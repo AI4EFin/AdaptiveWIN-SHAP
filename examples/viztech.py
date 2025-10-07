@@ -6,7 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 model = "LSTM"
-jump = 10
+jump = 1
 n_0 = 100
 root_dir = f"examples/results/{model}/Jump_{jump}_N0_{n_0}"
 

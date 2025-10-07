@@ -67,7 +67,7 @@ if __name__ == "__main__":
 
     MIN_SEG = 20
     N_0=100
-    JUMP=10
+    JUMP=1
     STEP=10
     ALPHA=0.95
     NUM_BOOTSTRAP = 10
