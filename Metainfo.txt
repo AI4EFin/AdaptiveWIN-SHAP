@@ -1,0 +1,9 @@
+Name of Quantlet:    'AdaptiveWIN-SHAP'
+
+Published in:        'Published in: Watt did you expect?'
+
+Description:         'This Quantlet contains the data and code for the Library as presented in the paper "Watt did you expect?"'
+
+Keywords:            'time series, AR, SHAP, library'
+
+Author:         Raul Cristian Bag, Stefan Lessmann, Daniel Traian Pele, Wolfgang Karl Härdle
