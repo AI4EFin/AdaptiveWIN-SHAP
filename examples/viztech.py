@@ -8,7 +8,9 @@ import matplotlib.pyplot as plt
 model = "LSTM"
 jump = 1
 n_0 = 100
-root_dir = f"examples/results/{model}/Jump_{jump}_N0_{n_0}"
+dataset_type = "line_std"
+order = "10"
+root_dir = f"examples/results/{model}/{dataset_type}_{order}/Jump_{jump}_N0_{n_0}"
 
 # Find all matching CSV files
 all_files = glob.glob(os.path.join(root_dir, "run_*.csv"))

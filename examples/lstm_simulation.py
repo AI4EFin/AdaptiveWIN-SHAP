@@ -58,7 +58,10 @@ if __name__ == "__main__":
     LSTM_LR = 1e-2
     LSTM_DROPOUT = 0.0
 
-    df = pd.read_csv("examples/datasets/data.csv")
+    dataset_type = "line_std"
+    order = "10"
+
+    df = pd.read_csv(f"examples/datasets/simulated/{dataset_type}/{order}.csv")
 
     model = AdaptiveLSTM(DEVICE, seq_length=LSTM_SEQ_LEN, input_size=1, hidden=LSTM_HIDDEN, layers=LSTM_LAYERS, dropout=LSTM_DROPOUT,
                          batch_size=LSTM_BATCH, lr=LSTM_LR, epochs=LSTM_EPOCHS, type_precision=np.float64)
@@ -68,15 +71,16 @@ if __name__ == "__main__":
     MIN_SEG = 20
     N_0=100
     JUMP=1
-    STEP=10
+    STEP=5
     ALPHA=0.95
-    NUM_BOOTSTRAP = 10
+    NUM_BOOTSTRAP = 1
 
-    out_dir = os.path.join("examples", f"results/LSTM/Jump_{JUMP}_N0_{N_0}")
+    out_dir = os.path.join("examples", f"results/LSTM/{dataset_type}_{order}/Jump_{JUMP}_N0_{N_0}")
     os.makedirs(out_dir, exist_ok=True)
 
     num_runs = 10
-    for run in range(num_runs):
+    for run in range(4, num_runs+4):
+        print(f"Run {run}")
         out_csv = os.path.join(out_dir, f"run_{run}.csv")
         results = cd.detect(min_window=MIN_SEG, n_0=N_0, jump=JUMP, search_step=STEP, alpha=ALPHA, num_bootstrap=NUM_BOOTSTRAP,
                         t_workers=10, b_workers=10, one_b_threads=1)
