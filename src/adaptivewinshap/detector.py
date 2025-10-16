@@ -111,7 +111,7 @@ class ChangeDetector:
                 J_abs = np.arange(J_start, J_end, search_step, dtype=np.int64)
 
                 # --- Observed T(i) across splits ---
-                T_vals = self.compute_T_vals(X_all, y_all, likelihood_i, J_abs, t_abs, t_workers)
+                T_vals = self.compute_T_vals(X_all, y_all, likelihood_i, J_abs, t_abs, t_workers, min_seg=min_window)
 
                 # --- Bootstrap critical values via wild residual bootstrap under the null ---
                 if num_bootstrap <= 0:
@@ -170,10 +170,10 @@ class ChangeDetector:
 
         return DT_N
 
-    def compute_T_vals(self, X_all, y_all, likelihood_i, J_abs, t_abs, max_processes):
+    def compute_T_vals(self, X_all, y_all, likelihood_i, J_abs, t_abs, max_processes, min_seg=20):
         def safe_calc(i_abs):
             try:
-                Ti = self.calculate_t(X_all, y_all, likelihood_i, i_abs, t_abs)
+                Ti = self.calculate_t(X_all, y_all, likelihood_i, i_abs, t_abs, min_seg=min_seg)
                 return max(0.0, Ti)
             except ValueError:
                 return 0.0
@@ -182,7 +182,7 @@ class ChangeDetector:
         T_vals = Parallel(n_jobs=max_processes, prefer="processes", batch_size='auto')(delayed(safe_calc)(i) for i in J_abs)
         return T_vals
 
-    def calculate_t(self, X_all, y_all, likelihood_i, i_abs, t_abs):
+    def calculate_t(self, X_all, y_all, likelihood_i, i_abs, t_abs, min_seg=20):
         if self.debug == True:
             print(f"tau={i_abs}")
         # Strict no-leak masks by target index
@@ -190,7 +190,7 @@ class ChangeDetector:
         Rmask = t_abs > i_abs
         mA = int(np.sum(Lmask))
         mB = int(np.sum(Rmask))
-        if mA < 20 or mB < 20:  # min targets per side; tune as needed
+        if mA < min_seg or mB < min_seg:  # min targets per side; tune as needed
             raise ValueError(f"Too few targets for split {i_abs}")
         likelihood_a, _, _, _, _, _ = self.construct_new_model().fit(X_all[Lmask], y_all[Lmask]).diagnostics(X_all[Lmask],
                                                                                              y_all[Lmask])

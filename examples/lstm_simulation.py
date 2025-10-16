@@ -59,7 +59,7 @@ if __name__ == "__main__":
     LSTM_DROPOUT = 0.0
 
     dataset_type = "line_std"
-    order = "10"
+    order = "25"
 
     df = pd.read_csv(f"examples/datasets/simulated/{dataset_type}/{order}.csv")
 
@@ -68,18 +68,18 @@ if __name__ == "__main__":
 
     cd = ChangeDetector(model, df["N"].to_numpy(dtype=np.float64), debug=False, force_cpu=True)
 
-    MIN_SEG = 20
-    N_0=100
+    MIN_SEG = 4
+    N_0=20
     JUMP=1
-    STEP=5
+    STEP=2
     ALPHA=0.95
-    NUM_BOOTSTRAP = 1
+    NUM_BOOTSTRAP = 10
 
     out_dir = os.path.join("examples", f"results/LSTM/{dataset_type}_{order}/Jump_{JUMP}_N0_{N_0}")
     os.makedirs(out_dir, exist_ok=True)
 
     num_runs = 10
-    for run in range(4, num_runs+4):
+    for run in range(num_runs):
         print(f"Run {run}")
         out_csv = os.path.join(out_dir, f"run_{run}.csv")
         results = cd.detect(min_window=MIN_SEG, n_0=N_0, jump=JUMP, search_step=STEP, alpha=ALPHA, num_bootstrap=NUM_BOOTSTRAP,
