@@ -59,7 +59,7 @@ if __name__ == "__main__":
     LSTM_DROPOUT = 0.0
 
     dataset_type = "line_std"
-    order = "25"
+    order = "50"
 
     df = pd.read_csv(f"examples/datasets/simulated/{dataset_type}/{order}.csv")
 

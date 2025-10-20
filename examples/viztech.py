@@ -10,7 +10,7 @@ model = "LSTM"
 jump = 1
 n_0 = 20
 dataset_type = "line_std"
-order = "25"
+order = "50"
 root_dir = f"examples/results/{model}/{dataset_type}_{order}/Jump_{jump}_N0_{n_0}"
 
 # Find all matching CSV files
