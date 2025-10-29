@@ -8,6 +8,7 @@ import torch
 from joblib import Parallel, delayed
 
 from .model import AdaptiveModel
+from .animator import SlidingWindowAnimator
 
 
 class ChangeDetector:
@@ -50,7 +51,7 @@ class ChangeDetector:
     # ----------------------------
     # Detection run (with weighted bootstrap retraining)
     # ----------------------------
-    def detect(self, min_window=3, n_0=200, jump=10, search_step=5, alpha=0.95, num_bootstrap=50, t_workers=-1, b_workers=-1, one_b_threads=-1):
+    def detect(self, min_window=3, n_0=200, jump=10, search_step=5, alpha=0.95, num_bootstrap=50, t_workers=-1, b_workers=-1, one_b_threads=-1, debug_anim=True, pause=0.05, save_path=None, fps=16, boomerang=False):
         """
         t_workers: int, default -1 (use all available). Workers used to parallelize the test statistic.
         b_workers: int, default -1 (use all available). Workers used to parallelize the bootstrap.
@@ -61,6 +62,13 @@ class ChangeDetector:
         """
         DT_N = pd.DataFrame({"Date": np.arange(len(self.data)), "N": self.data})
         windows, mse_vals, rmse_vals, likelihoods, scaled_windows = [], [], [], [], []
+        x_axis = np.arange(len(self.data), dtype=float)  # absolute index as x
+        if debug_anim:
+            animator = SlidingWindowAnimator(
+                x_axis, np.asarray(self.data, dtype=float),
+                title="Adaptive WIN-SHAP",
+                pause=pause, record=True
+            )
 
         io = self.data.shape[0]  # starting from final time
         I_0 = list(self.data[max(0, io - n_0):io])
@@ -84,6 +92,9 @@ class ChangeDetector:
                 # arithmetic
                 n_k = (k + 1) * n_0
                 n_k_plus1 = (k + 2) * n_0
+
+                start_kp1_abs = max(0, io - n_k_plus1)
+                end_kp1_abs = io  # exclusive upper bound
 
                 I_k = list(self.data[max(0, io - n_k):io])
                 I_k_plus1 = list(self.data[max(0, io - n_k_plus1):io])
@@ -113,6 +124,12 @@ class ChangeDetector:
                 # --- Observed T(i) across splits ---
                 T_vals = self.compute_T_vals(X_all, y_all, likelihood_i, J_abs, t_abs, t_workers, min_seg=min_window)
 
+                # Best split τ
+                best_tau = None
+                if len(T_vals):
+                    j_best_idx = int(np.argmax(T_vals))
+                    best_tau = int(J_abs[j_best_idx])
+
                 # --- Bootstrap critical values via wild residual bootstrap under the null ---
                 if num_bootstrap <= 0:
                     raise ValueError(f"Num bootstrap must be at least 1. {num_bootstrap} provided")
@@ -130,6 +147,25 @@ class ChangeDetector:
                         f"SupLR={test_value:.3f} | crit({alpha:.2f})={critical_value:.3f} | #splits={len(T_vals)} | B={num_bootstrap} | time/k={end_k_time - start_k_time:.2f}s")
                 else:
                     test_value, critical_value = 0.0, math.inf
+
+                # --- FINAL (show crit) ---
+                if animator:
+                    animator.update(
+                        io=io,
+                        start_idx=start_kp1_abs,
+                        end_idx=end_kp1_abs,
+                        J_abs=J_abs,
+                        sup_lr=test_value,
+                        crit=critical_value,
+                        k=k,
+                        l=l,
+                        tau=best_tau,
+                        n_k_plus1=n_k_plus1,
+                        n_k=n_k,
+                        n_k_minus1=n_k_minus1,
+                        J_start=J_start,
+                        J_end=J_end,
+                    )
 
                 if test_value > critical_value:
                     print(f"Found break at step {l} (window size {len(I_k)}).")
@@ -167,6 +203,12 @@ class ChangeDetector:
         DT_N["scaled_windows"] = pd.Series(scaled_windows)
         DT_N["MSE"] = pd.Series(mse_vals)
         DT_N["RMSE"] = pd.Series(rmse_vals)
+
+        # Save (optional)
+        if animator is not None:
+            if save_path:
+                animator.save(save_path, fps=fps, boomerang=boomerang)
+            animator.close()
 
         return DT_N
 

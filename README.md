@@ -11,3 +11,8 @@ To run locally
 ```bash
 python examples/lstm_simulation.py
 ```
+
+### Reverse video with ffmpeg
+```bash
+ffmpeg -i run_0.mp4 -vf reverse run_0_rv.mp4
+```
