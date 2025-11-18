@@ -1,4 +1,6 @@
+import glob
 import os
+import timeit
 
 import numpy as np
 
@@ -6,8 +8,8 @@ import torch
 import torch.nn as nn
 import pandas as pd
 
-from adaptivewinshap import AdaptiveModel, ChangeDetector, store_init_kwargs
-
+from adaptivewinshap import AdaptiveModel, ChangeDetector, store_init_kwargs, AdaptiveWinShap
+from windowshap.windowshap import StationaryWindowSHAP, SlidingWindowSHAP, DynamicWindowSHAP
 
 class AdaptiveLSTM(AdaptiveModel):
     @store_init_kwargs
@@ -44,6 +46,16 @@ class AdaptiveLSTM(AdaptiveModel):
         y_tensor = torch.from_numpy(y)
         return X_tensor, y_tensor, t_abs
 
+    @torch.no_grad()
+    def predict(self, x: np.ndarray) -> np.ndarray:
+        # x_flat: [N, L*F] -> [N, L, F]
+        # N = x_flat.shape[0]
+        # F = input_size
+        # x = x_flat.reshape(N, L, F)
+        xt = torch.tensor(x, dtype=torch.float32, device=self.device)
+        preds = model(xt)  # [N]
+        return preds.detach().cpu().numpy().reshape(-1, 1)  # SHAP expects 2D
+
 if __name__ == "__main__":
     DEVICE = "cpu"
     if torch.cuda.is_available():
@@ -78,12 +90,55 @@ if __name__ == "__main__":
     out_dir = os.path.join("examples", f"results/LSTM/{dataset_type}_{order}/Jump_{JUMP}_N0_{N_0}")
     os.makedirs(out_dir, exist_ok=True)
 
-    num_runs = 1
-    for run in range(num_runs):
-        print(f"Run {run}")
-        out_csv = os.path.join(out_dir, f"run_{run}.csv")
-        results = cd.detect(min_window=MIN_SEG, n_0=N_0, jump=JUMP, search_step=STEP, alpha=ALPHA, num_bootstrap=NUM_BOOTSTRAP,
-                        t_workers=10, b_workers=10, one_b_threads=1, save_path=f"{out_dir}/run_{run}.mp4")
+    # Window Size
+    # num_runs = 1
+    # for run in range(num_runs):
+    #     print(f"Run {run}")
+    #     out_csv = os.path.join(out_dir, f"run_{run}.csv")
+    #     results = cd.detect(min_window=MIN_SEG, n_0=N_0, jump=JUMP, search_step=STEP, alpha=ALPHA, num_bootstrap=NUM_BOOTSTRAP,
+    #                     t_workers=10, b_workers=10, one_b_threads=1, save_path=f"{out_dir}/run_{run}.mp4")
+    #
+    #     pd.DataFrame(results).to_csv(out_csv)
+    #     print(f"Saved results to: {out_csv}")
 
-        pd.DataFrame(results).to_csv(out_csv)
-        print(f"Saved results to: {out_csv}")
+    # Adaptive WINSHAP
+    # all_files = glob.glob(os.path.join(out_dir, "run*.csv"))
+    #
+    # dfs = []
+    # for file in all_files:
+    #     # Read only the column you care about
+    #     win_df = pd.read_csv(file, usecols=["windows"])
+    #
+    #     # Rename the column to something unique (e.g., filename without extension)
+    #     name = os.path.splitext(os.path.basename(file))[0]
+    #     win_df = win_df.rename(columns={"windows": f"windows_{name}"})
+    #
+    #     dfs.append(win_df)
+    #
+    # windows_df = pd.concat(dfs, axis=1)
+    # windows_df["window_mean"] = windows_df.mean(axis=1)
+    # windows_df.to_csv(f"{out_dir}/windows.csv")
+    #
+    # runner = AdaptiveWinShap(
+    #     seq_length=LSTM_SEQ_LEN,
+    #     lstm_hidden=LSTM_HIDDEN,
+    #     lstm_layers=LSTM_LAYERS,
+    #     lstm_dropout=LSTM_DROPOUT,
+    #     batch_size=LSTM_BATCH,
+    #     epochs=LSTM_EPOCHS,
+    #     lr=LSTM_LR  ,
+    #     max_background=150,  # optional speed-up
+    #     shap_nsamples=500,  # increase for accuracy
+    #     aggregate_lag=True  # per-lag |SHAP| sums
+    # )
+    # print(df.head())
+    # # Example 2: window sizes from CSV
+    # # CSV should contain a 'window_size' column (or set csv_column="...").
+    # df_results_csv = runner.rolling_explain(
+    #     data=df.N.to_numpy(dtype=np.float32),
+    #     window_sizes_csv=f"{out_dir}/windows.csv",
+    #     csv_column="window_mean"
+    # )
+    #
+    # df_results_csv.to_csv(f"{out_dir}/results.csv")
+
