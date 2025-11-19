@@ -144,7 +144,7 @@ def run_benchmark(dataset_path, output_dir, device='cpu', verbose=True):
 
     if verbose:
         print(f"Vanilla SHAP computed for {len(global_results)} time points")
-        print("Faithfulness scores computed inline during SHAP computation")
+        print("Faithfulness and ablation scores computed inline during SHAP computation")
 
     # ========== Method 2: Rolling Window SHAP ==========
     if verbose:
@@ -173,7 +173,7 @@ def run_benchmark(dataset_path, output_dir, device='cpu', verbose=True):
 
     if verbose:
         print(f"Rolling SHAP computed for {len(rolling_results)} windows")
-        print("Faithfulness scores computed inline during SHAP computation")
+        print("Faithfulness and ablation scores computed inline during SHAP computation")
 
     # ========== Method 3: Adaptive SHAP ==========
     if verbose:
@@ -237,46 +237,68 @@ def run_benchmark(dataset_path, output_dir, device='cpu', verbose=True):
 
         if verbose:
             print(f"Adaptive SHAP computed for {len(adaptive_results)} windows")
-            print("Faithfulness scores computed inline during SHAP computation")
+            print("Faithfulness and ablation scores computed inline during SHAP computation")
 
-    # ========== Aggregate Pre-computed Faithfulness Scores ==========
+    # ========== Aggregate Pre-computed Faithfulness and Ablation Scores ==========
     if verbose:
         print("\n" + "="*60)
         print("Summary of Results")
         print("="*60)
-        print("Aggregating pre-computed faithfulness scores from CSV files...")
+        print("Aggregating pre-computed faithfulness and ablation scores from CSV files...")
 
-    # Read pre-computed faithfulness scores from CSV files
+    # Read pre-computed faithfulness and ablation scores from CSV files
     summary_data = []
 
-    # Helper function to extract faithfulness columns
-    def extract_faithfulness_metrics(df, method_name):
-        """Extract and aggregate faithfulness metrics from a dataframe."""
-        # Find all faithfulness columns
+    # Helper function to extract metrics columns
+    def extract_metrics(df, method_name):
+        """Extract and aggregate faithfulness and ablation metrics from a dataframe."""
+        # Find all faithfulness and ablation columns
         faith_cols = [c for c in df.columns if c.startswith('faithfulness_')]
+        ablation_cols = [c for c in df.columns if c.startswith('ablation_')]
 
-        if not faith_cols:
+        if not faith_cols and not ablation_cols:
             if verbose:
-                print(f"  Warning: No faithfulness columns found in {method_name}")
+                print(f"  Warning: No metrics columns found in {method_name}")
             return []
 
-        # Group by evaluation type (e.g., 'prtb_p90', 'sqnc_p50')
-        eval_types = set()
+        rows = []
+
+        # Process faithfulness columns
+        faith_eval_types = set()
         for col in faith_cols:
             # Extract evaluation type: faithfulness_prtb_p90 -> prtb_p90
             eval_type = col.replace('faithfulness_', '')
-            eval_types.add(eval_type)
+            faith_eval_types.add(eval_type)
 
-        rows = []
-        for eval_type in sorted(eval_types):
+        for eval_type in sorted(faith_eval_types):
             col_name = f'faithfulness_{eval_type}'
             if col_name in df.columns:
                 # Compute mean of this metric across all time points
                 mean_value = df[col_name].mean()
                 rows.append({
                     'method': method_name,
+                    'metric_type': 'faithfulness',
                     'evaluation': eval_type,
-                    'faithfulness_score': mean_value
+                    'score': mean_value
+                })
+
+        # Process ablation columns
+        ablation_eval_types = set()
+        for col in ablation_cols:
+            # Extract evaluation type: ablation_mif_p90 -> mif_p90
+            eval_type = col.replace('ablation_', '')
+            ablation_eval_types.add(eval_type)
+
+        for eval_type in sorted(ablation_eval_types):
+            col_name = f'ablation_{eval_type}'
+            if col_name in df.columns:
+                # Compute mean of this metric across all time points
+                mean_value = df[col_name].mean()
+                rows.append({
+                    'method': method_name,
+                    'metric_type': 'ablation',
+                    'evaluation': eval_type,
+                    'score': mean_value
                 })
 
         return rows
@@ -285,7 +307,7 @@ def run_benchmark(dataset_path, output_dir, device='cpu', verbose=True):
     global_path = os.path.join(output_dir, 'global_shap_results.csv')
     if os.path.exists(global_path):
         global_df = pd.read_csv(global_path)
-        summary_data.extend(extract_faithfulness_metrics(global_df, 'global_shap'))
+        summary_data.extend(extract_metrics(global_df, 'global_shap'))
         if verbose:
             print(f"  Vanilla SHAP: {len(global_df)} time points")
 
@@ -293,7 +315,7 @@ def run_benchmark(dataset_path, output_dir, device='cpu', verbose=True):
     rolling_path = os.path.join(output_dir, 'rolling_shap_results.csv')
     if os.path.exists(rolling_path):
         rolling_df = pd.read_csv(rolling_path)
-        summary_data.extend(extract_faithfulness_metrics(rolling_df, 'rolling_shap'))
+        summary_data.extend(extract_metrics(rolling_df, 'rolling_shap'))
         if verbose:
             print(f"  Rolling SHAP: {len(rolling_df)} windows")
 
@@ -301,7 +323,7 @@ def run_benchmark(dataset_path, output_dir, device='cpu', verbose=True):
     adaptive_path = os.path.join(output_dir, 'adaptive_shap_results.csv')
     if os.path.exists(adaptive_path):
         adaptive_df = pd.read_csv(adaptive_path)
-        summary_data.extend(extract_faithfulness_metrics(adaptive_df, 'adaptive_shap'))
+        summary_data.extend(extract_metrics(adaptive_df, 'adaptive_shap'))
         if verbose:
             print(f"  Adaptive SHAP: {len(adaptive_df)} windows")
 

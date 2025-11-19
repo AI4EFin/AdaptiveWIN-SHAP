@@ -57,73 +57,217 @@ def load_benchmark_data(results_dir):
 
 def plot_faithfulness_comparison(data, save_dir):
     """Compare faithfulness scores across methods."""
-    summary = data['summary']
-
-    # Get available metrics from summary columns
-    available_metrics = []
-    for col in ['faithfulness_score', 'mae', 'mse', 'correlation']:
-        if col in summary.columns:
-            available_metrics.append(col)
-
-    if not available_metrics:
-        print("No metrics found in summary - skipping faithfulness comparison")
+    if 'summary' not in data:
+        print("No summary data available - skipping faithfulness comparison")
         return
 
-    # Create figure based on available metrics
-    n_metrics = len(available_metrics)
-    fig, axes = plt.subplots(2, n_metrics, figsize=(5*n_metrics, 10))
-    if n_metrics == 1:
-        axes = axes.reshape(-1, 1)
+    summary = data['summary']
+
+    # Filter for faithfulness metrics only
+    if 'metric_type' in summary.columns:
+        faith_summary = summary[summary['metric_type'] == 'faithfulness'].copy()
+    else:
+        faith_summary = summary.copy()
+
+    if len(faith_summary) == 0:
+        print("No faithfulness metrics found in summary - skipping faithfulness comparison")
+        return
+
+    fig, axes = plt.subplots(2, 3, figsize=(15, 10))
     fig.suptitle('Faithfulness Comparison Across Methods', fontsize=14, fontweight='bold')
 
     eval_types = ['prtb', 'sqnc']
     percentiles = ['p90', 'p70', 'p50']
 
     for i, eval_type in enumerate(eval_types):
-        for j, metric in enumerate(available_metrics):
+        for j, percentile in enumerate(percentiles):
             ax = axes[i, j]
 
-            # Filter data for this eval type
-            eval_data = []
-            for p in percentiles:
-                eval_key = f'{eval_type}_{p}'
-                subset = summary[summary['evaluation'] == eval_key]
+            eval_key = f'{eval_type}_{percentile}'
+            subset = faith_summary[faith_summary['evaluation'] == eval_key]
+
+            if len(subset) > 0:
+                methods = []
+                scores = []
+                colors = []
+                color_map = {'global_shap': '#1f77b4', 'rolling_shap': '#ff7f0e', 'adaptive_shap': '#2ca02c'}
 
                 for method in ['global_shap', 'rolling_shap', 'adaptive_shap']:
                     method_data = subset[subset['method'] == method]
-                    if len(method_data) > 0 and metric in method_data.columns:
-                        eval_data.append({
-                            'Method': method.replace('_', ' ').title(),
-                            'Percentile': p,
-                            metric: method_data[metric].values[0]
-                        })
+                    if len(method_data) > 0:
+                        methods.append(method.replace('_', ' ').title())
+                        scores.append(method_data['score'].values[0])
+                        colors.append(color_map.get(method, '#888888'))
 
-            if eval_data:
-                df_plot = pd.DataFrame(eval_data)
+                if methods:
+                    bars = ax.bar(range(len(methods)), scores, color=colors, alpha=0.7, edgecolor='black')
+                    ax.set_xticks(range(len(methods)))
+                    ax.set_xticklabels(methods, rotation=45, ha='right')
+                    ax.set_ylabel('Faithfulness Score')
+                    ax.set_title(f'{eval_type.upper()} - {percentile.upper()}')
+                    ax.grid(True, alpha=0.3, axis='y')
 
-                # Create grouped bar chart
-                x = np.arange(len(percentiles))
-                width = 0.25
-                methods = df_plot['Method'].unique()
-
-                for idx, method in enumerate(methods):
-                    method_data = df_plot[df_plot['Method'] == method]
-                    values = [method_data[method_data['Percentile'] == p][metric].values[0]
-                             if len(method_data[method_data['Percentile'] == p]) > 0 else 0
-                             for p in percentiles]
-                    ax.bar(x + idx * width, values, width, label=method)
-
-                ax.set_xlabel('Percentile')
-                ax.set_ylabel(metric.replace('_', ' ').title())
-                ax.set_title(f'{eval_type.upper()} - {metric.replace("_", " ").title()}')
-                ax.set_xticks(x + width)
-                ax.set_xticklabels(percentiles)
-                ax.legend()
-                ax.grid(True, alpha=0.3)
+                    # Add value labels on bars
+                    for bar in bars:
+                        height = bar.get_height()
+                        ax.text(bar.get_x() + bar.get_width()/2., height,
+                               f'{height:.4f}',
+                               ha='center', va='bottom', fontsize=8)
 
     plt.tight_layout()
     plt.savefig(os.path.join(save_dir, 'faithfulness_comparison.png'), bbox_inches='tight')
     print(f"Saved: faithfulness_comparison.png")
+    plt.close()
+
+
+def plot_ablation_comparison(data, save_dir):
+    """Compare ablation scores across methods."""
+    if 'summary' not in data:
+        print("No summary data available - skipping ablation comparison")
+        return
+
+    summary = data['summary']
+
+    # Filter for ablation metrics only
+    if 'metric_type' in summary.columns:
+        ablation_summary = summary[summary['metric_type'] == 'ablation'].copy()
+    else:
+        print("No ablation metrics found in summary - skipping ablation comparison")
+        return
+
+    if len(ablation_summary) == 0:
+        print("No ablation metrics found in summary - skipping ablation comparison")
+        return
+
+    fig, axes = plt.subplots(2, 3, figsize=(15, 10))
+    fig.suptitle('Ablation Score Comparison Across Methods', fontsize=14, fontweight='bold')
+
+    ablation_types = ['mif', 'lif']
+    percentiles = ['p90', 'p70', 'p50']
+
+    for i, ablation_type in enumerate(ablation_types):
+        for j, percentile in enumerate(percentiles):
+            ax = axes[i, j]
+
+            eval_key = f'{ablation_type}_{percentile}'
+            subset = ablation_summary[ablation_summary['evaluation'] == eval_key]
+
+            if len(subset) > 0:
+                methods = []
+                scores = []
+                colors = []
+                color_map = {'global_shap': '#1f77b4', 'rolling_shap': '#ff7f0e', 'adaptive_shap': '#2ca02c'}
+
+                for method in ['global_shap', 'rolling_shap', 'adaptive_shap']:
+                    method_data = subset[subset['method'] == method]
+                    if len(method_data) > 0:
+                        methods.append(method.replace('_', ' ').title())
+                        scores.append(method_data['score'].values[0])
+                        colors.append(color_map.get(method, '#888888'))
+
+                if methods:
+                    bars = ax.bar(range(len(methods)), scores, color=colors, alpha=0.7, edgecolor='black')
+                    ax.set_xticks(range(len(methods)))
+                    ax.set_xticklabels(methods, rotation=45, ha='right')
+                    ax.set_ylabel('Ablation Score')
+                    ax.set_title(f'{ablation_type.upper()} - {percentile.upper()}')
+                    ax.grid(True, alpha=0.3, axis='y')
+
+                    # Add value labels on bars
+                    for bar in bars:
+                        height = bar.get_height()
+                        ax.text(bar.get_x() + bar.get_width()/2., height,
+                               f'{height:.4f}',
+                               ha='center', va='bottom', fontsize=8)
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, 'ablation_comparison.png'), bbox_inches='tight')
+    print(f"Saved: ablation_comparison.png")
+    plt.close()
+
+
+def plot_ablation_mif_vs_lif(data, save_dir):
+    """Compare MIF vs LIF ablation scores for each method."""
+    if 'summary' not in data:
+        print("No summary data available - skipping MIF vs LIF comparison")
+        return
+
+    summary = data['summary']
+
+    if 'metric_type' not in summary.columns:
+        print("No metric_type column in summary - skipping MIF vs LIF comparison")
+        return
+
+    ablation_summary = summary[summary['metric_type'] == 'ablation'].copy()
+
+    if len(ablation_summary) == 0:
+        print("No ablation metrics found - skipping MIF vs LIF comparison")
+        return
+
+    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+    fig.suptitle('MIF vs LIF Ablation Comparison (Higher MIF/LIF ratio = Better)',
+                 fontsize=14, fontweight='bold')
+
+    percentiles = ['p90', 'p70', 'p50']
+    color_map = {'global_shap': '#1f77b4', 'rolling_shap': '#ff7f0e', 'adaptive_shap': '#2ca02c'}
+
+    for j, percentile in enumerate(percentiles):
+        ax = axes[j]
+
+        methods = []
+        mif_scores = []
+        lif_scores = []
+        colors = []
+
+        for method in ['global_shap', 'rolling_shap', 'adaptive_shap']:
+            # Get MIF score
+            mif_key = f'mif_{percentile}'
+            mif_data = ablation_summary[(ablation_summary['method'] == method) &
+                                        (ablation_summary['evaluation'] == mif_key)]
+
+            # Get LIF score
+            lif_key = f'lif_{percentile}'
+            lif_data = ablation_summary[(ablation_summary['method'] == method) &
+                                        (ablation_summary['evaluation'] == lif_key)]
+
+            if len(mif_data) > 0 and len(lif_data) > 0:
+                methods.append(method.replace('_', ' ').title())
+                mif_scores.append(mif_data['score'].values[0])
+                lif_scores.append(lif_data['score'].values[0])
+                colors.append(color_map.get(method, '#888888'))
+
+        if methods:
+            x = np.arange(len(methods))
+            width = 0.35
+
+            bars1 = ax.bar(x - width/2, mif_scores, width, label='MIF (Most Important First)',
+                          color=colors, alpha=0.7, edgecolor='black')
+            bars2 = ax.bar(x + width/2, lif_scores, width, label='LIF (Least Important First)',
+                          color=colors, alpha=0.4, edgecolor='black', hatch='//')
+
+            ax.set_xlabel('Method')
+            ax.set_ylabel('Ablation Score')
+            ax.set_title(f'Percentile: {percentile.upper()}')
+            ax.set_xticks(x)
+            ax.set_xticklabels(methods, rotation=45, ha='right')
+            ax.legend()
+            ax.grid(True, alpha=0.3, axis='y')
+
+            # Add value labels
+            for bar in bars1:
+                height = bar.get_height()
+                ax.text(bar.get_x() + bar.get_width()/2., height,
+                       f'{height:.3f}',
+                       ha='center', va='bottom', fontsize=7)
+            for bar in bars2:
+                height = bar.get_height()
+                ax.text(bar.get_x() + bar.get_width()/2., height,
+                       f'{height:.3f}',
+                       ha='center', va='bottom', fontsize=7)
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, 'ablation_mif_vs_lif.png'), bbox_inches='tight')
+    print(f"Saved: ablation_mif_vs_lif.png")
     plt.close()
 
 
@@ -398,7 +542,7 @@ def plot_temporal_faithfulness(data, save_dir):
                             window = min(50, len(df) // 10)
                             rolling_mean = df[col_name].rolling(window=window, center=True).mean()
                             ax.plot(df['end_index'], rolling_mean,
-                                   linestyle='--', linewidth=2, color=color, alpha=0.8)
+                                   linestyle='--', linewidth=2, color=color, alpha=0.8, label=label)
 
             ax.set_xlabel('Time Index')
             ax.set_ylabel('Faithfulness Score')
@@ -412,35 +556,130 @@ def plot_temporal_faithfulness(data, save_dir):
     plt.close()
 
 
+def plot_temporal_ablation(data, save_dir):
+    """Plot ablation scores over time for each method."""
+    fig, axes = plt.subplots(2, 3, figsize=(18, 10))
+    fig.suptitle('Ablation Scores Over Time', fontsize=14, fontweight='bold')
+
+    ablation_types = ['mif', 'lif']
+    percentiles = ['p90', 'p70', 'p50']
+
+    for i, ablation_type in enumerate(ablation_types):
+        for j, percentile in enumerate(percentiles):
+            ax = axes[i, j]
+
+            eval_key = f'{ablation_type}_{percentile}'
+            col_name = f'ablation_{eval_key}'
+
+            # Plot for each method
+            for method_key, label, color in [
+                ('global_shap', 'Global', '#1f77b4'),
+                ('rolling_shap', 'Rolling', '#ff7f0e'),
+                ('adaptive_shap', 'Adaptive', '#2ca02c')
+            ]:
+                if method_key in data:
+                    df = data[method_key]
+                    if col_name in df.columns:
+                        # Plot with transparency and smoothing
+                        ax.plot(df['end_index'], df[col_name], label=label,
+                               alpha=0.6, linewidth=1.5, color=color)
+
+                        # Add rolling mean for trend
+                        if len(df) > 20:
+                            window = min(50, len(df) // 10)
+                            rolling_mean = df[col_name].rolling(window=window, center=True).mean()
+                            ax.plot(df['end_index'], rolling_mean,
+                                   linestyle='--', linewidth=2, color=color, alpha=0.8)
+
+            ax.set_xlabel('Time Index')
+            ax.set_ylabel('Ablation Score')
+            ax.set_title(f'{ablation_type.upper()} - {percentile.upper()}')
+            ax.legend(loc='best')
+            ax.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, 'temporal_ablation.png'), bbox_inches='tight')
+    print(f"Saved: temporal_ablation.png")
+    plt.close()
+
+
 def create_summary_dashboard(data, save_dir):
     """Create a comprehensive summary dashboard."""
     fig = plt.figure(figsize=(16, 10))
     gs = fig.add_gridspec(3, 3, hspace=0.3, wspace=0.3)
     fig.suptitle('Benchmark Summary Dashboard', fontsize=16, fontweight='bold')
 
-    # 1. Faithfulness scores comparison
+    # 1. Faithfulness and Ablation scores comparison
     ax1 = fig.add_subplot(gs[0, :2])
     if 'summary' in data:
         summary = data['summary']
-        # Get perturbation p50 scores
-        p50_data = summary[summary['evaluation'] == 'prtb_p50']
-        methods = p50_data['method'].values
-        scores = p50_data['faithfulness_score'].values
 
-        colors = ['#1f77b4', '#ff7f0e', '#2ca02c']
-        bars = ax1.bar(range(len(methods)), scores, color=colors, alpha=0.7, edgecolor='black')
-        ax1.set_xticks(range(len(methods)))
-        ax1.set_xticklabels([m.replace('_', ' ').title() for m in methods])
-        ax1.set_ylabel('Faithfulness Score')
-        ax1.set_title('Faithfulness Score Comparison (Perturbation @ 50th percentile)')
-        ax1.grid(True, alpha=0.3, axis='y')
+        # Prepare data for both metrics
+        if 'metric_type' in summary.columns:
+            # New format with metric_type
+            faith_data = summary[(summary['metric_type'] == 'faithfulness') &
+                                 (summary['evaluation'] == 'prtb_p50')]
+            ablation_data = summary[(summary['metric_type'] == 'ablation') &
+                                    (summary['evaluation'] == 'mif_p50')]
+        else:
+            # Old format
+            faith_data = summary[summary['evaluation'] == 'prtb_p50']
+            ablation_data = pd.DataFrame()
 
-        # Add value labels on bars
-        for bar in bars:
-            height = bar.get_height()
-            ax1.text(bar.get_x() + bar.get_width()/2., height,
-                    f'{height:.4f}',
-                    ha='center', va='bottom', fontsize=9)
+        methods = []
+        faith_scores = []
+        ablation_scores = []
+        colors = {'global_shap': '#1f77b4', 'rolling_shap': '#ff7f0e', 'adaptive_shap': '#2ca02c'}
+
+        for method in ['global_shap', 'rolling_shap', 'adaptive_shap']:
+            if len(faith_data) > 0:
+                m_faith = faith_data[faith_data['method'] == method]
+                if len(m_faith) > 0:
+                    methods.append(method.replace('_', ' ').title())
+                    faith_scores.append(m_faith['score'].values[0] if 'score' in m_faith.columns
+                                       else m_faith['faithfulness_score'].values[0])
+
+                    # Get ablation score if available
+                    if len(ablation_data) > 0:
+                        m_abl = ablation_data[ablation_data['method'] == method]
+                        ablation_scores.append(m_abl['score'].values[0] if len(m_abl) > 0 else 0)
+                    else:
+                        ablation_scores.append(0)
+
+        if methods:
+            x = np.arange(len(methods))
+            width = 0.35
+
+            # Plot both metrics
+            method_colors = [colors.get(m.lower().replace(' ', '_'), '#888888') for m in methods]
+            bars1 = ax1.bar(x - width/2, faith_scores, width, label='Faithfulness (PRTB p50)',
+                           color=method_colors, alpha=0.7, edgecolor='black')
+
+            if any(ablation_scores):
+                bars2 = ax1.bar(x + width/2, ablation_scores, width, label='Ablation (MIF p50)',
+                               color=method_colors, alpha=0.5, edgecolor='black', hatch='//')
+
+            ax1.set_xticks(x)
+            ax1.set_xticklabels(methods, rotation=45, ha='right')
+            ax1.set_ylabel('Score')
+            ax1.set_title('Faithfulness & Ablation Score Comparison')
+            ax1.legend()
+            ax1.grid(True, alpha=0.3, axis='y')
+
+            # Add value labels on bars
+            for bar in bars1:
+                height = bar.get_height()
+                if height > 0:
+                    ax1.text(bar.get_x() + bar.get_width()/2., height,
+                            f'{height:.4f}',
+                            ha='center', va='bottom', fontsize=8)
+            if any(ablation_scores):
+                for bar in bars2:
+                    height = bar.get_height()
+                    if height > 0:
+                        ax1.text(bar.get_x() + bar.get_width()/2., height,
+                                f'{height:.4f}',
+                                ha='center', va='bottom', fontsize=8)
 
     # 2. Method statistics table
     ax2 = fig.add_subplot(gs[0, 2])
@@ -568,6 +807,16 @@ def main():
         print(f"Error in faithfulness comparison: {e}")
 
     try:
+        plot_ablation_comparison(data, save_dir)
+    except Exception as e:
+        print(f"Error in ablation comparison: {e}")
+
+    try:
+        plot_ablation_mif_vs_lif(data, save_dir)
+    except Exception as e:
+        print(f"Error in MIF vs LIF comparison: {e}")
+
+    try:
         plot_shap_over_time(data, save_dir)
     except Exception as e:
         print(f"Error in SHAP over time: {e}")
@@ -591,6 +840,11 @@ def main():
         plot_temporal_faithfulness(data, save_dir)
     except Exception as e:
         print(f"Error in temporal faithfulness: {e}")
+
+    try:
+        plot_temporal_ablation(data, save_dir)
+    except Exception as e:
+        print(f"Error in temporal ablation: {e}")
 
     try:
         create_summary_dashboard(data, save_dir)

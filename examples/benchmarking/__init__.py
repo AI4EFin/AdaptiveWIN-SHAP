@@ -6,6 +6,7 @@ from .metrics import (
     xai_eval_fnc,
     compute_faithfulness_metrics,
     compute_point_faithfulness,
+    compute_point_ablation,
     evaluate_explanation_quality
 )
 
@@ -22,6 +23,7 @@ __all__ = [
     'xai_eval_fnc',
     'compute_faithfulness_metrics',
     'compute_point_faithfulness',
+    'compute_point_ablation',
     'evaluate_explanation_quality',
     'GlobalSHAP',
     'RollingWindowSHAP',

@@ -223,6 +223,109 @@ def compute_point_faithfulness(model, shap_values, input_sequence,
     return results
 
 
+def compute_point_ablation(model, shap_values, input_sequence,
+                           percentiles=[90, 70, 50],
+                           ablation_types=['mif', 'lif']):
+    """
+    Compute ablation metrics for a single prediction point.
+
+    Ablation systematically removes features in order of importance and measures
+    the cumulative effect on predictions. This is considered one of the most
+    rigorous XAI evaluation metrics.
+
+    Parameters
+    ----------
+    model : prediction model
+        The model that produced the SHAP values (must have predict method)
+    shap_values : array-like
+        SHAP values for this point, shape [seq_len] or [seq_len, features]
+    input_sequence : array-like
+        Input sequence for this point, shape [seq_len, features] or [1, seq_len, features]
+    percentiles : list of int
+        Percentiles of features to remove (e.g., 90 = remove top 10%)
+    ablation_types : list of str
+        Ablation strategies:
+        - 'mif': Most Important First (remove most important features first)
+        - 'lif': Least Important First (remove least important features first)
+
+    Returns
+    -------
+    dict : Dictionary with keys like 'ablation_mif_p90', 'ablation_lif_p50', etc.
+           Values represent the average prediction change as features are removed.
+    """
+    # Ensure correct shapes
+    shap_values = np.asarray(shap_values)
+    input_sequence = np.asarray(input_sequence)
+
+    # Handle different input shapes
+    if input_sequence.ndim == 2:
+        # [seq_len, features] -> [1, seq_len, features]
+        input_sequence = input_sequence[None, :, :]
+    elif input_sequence.ndim == 3 and input_sequence.shape[0] != 1:
+        # Take first instance if batch
+        input_sequence = input_sequence[0:1, :, :]
+
+    # Flatten SHAP values if needed [seq_len, features] -> [seq_len * features]
+    if shap_values.ndim == 2:
+        shap_flat = np.abs(shap_values).flatten()
+    else:
+        shap_flat = np.abs(shap_values)
+
+    # Get original prediction
+    original_pred = model.predict(input_sequence)
+
+    results = {}
+    num_time_steps = input_sequence.shape[1]
+    num_feature_dims = input_sequence.shape[2]
+
+    for percentile in percentiles:
+        # Determine number of features to ablate
+        num_features = len(shap_flat)
+        top_k = max(1, int(np.ceil((1 - percentile/100) * num_features)))
+
+        for ablation_type in ablation_types:
+            # Get indices of features to remove
+            if ablation_type == 'mif':
+                # Most important first: sort descending
+                sorted_indices = np.argsort(shap_flat)[::-1][:top_k]
+            elif ablation_type == 'lif':
+                # Least important first: sort ascending
+                sorted_indices = np.argsort(shap_flat)[:top_k]
+            else:
+                raise ValueError(f"Unknown ablation_type: {ablation_type}")
+
+            # Iteratively remove features and measure cumulative effect
+            cumulative_changes = []
+            input_ablated = deepcopy(input_sequence)
+
+            for i, flat_idx in enumerate(sorted_indices):
+                # Convert flat index back to (time, feature) indices
+                t_idx = flat_idx // num_feature_dims
+                f_idx = flat_idx % num_feature_dims
+
+                if t_idx < num_time_steps:
+                    # Remove this feature by setting to 0 (standard ablation)
+                    input_ablated[0, t_idx, f_idx] = 0
+
+                    # Get prediction with this feature removed
+                    ablated_pred = model.predict(input_ablated)
+
+                    # Measure absolute change from original
+                    change = np.abs(original_pred - ablated_pred).mean()
+                    cumulative_changes.append(change)
+
+            # Compute average degradation (area under curve normalized)
+            if len(cumulative_changes) > 0:
+                avg_degradation = np.mean(cumulative_changes)
+            else:
+                avg_degradation = 0.0
+
+            key = f'ablation_{ablation_type}_p{percentile}'
+            results[key] = float(avg_degradation)
+
+    return results
+
+
 def evaluate_explanation_quality(model, shap_values, input_sequences,
                                   percentiles=[90, 70, 50],
                                   eval_types=['prtb', 'sqnc'],

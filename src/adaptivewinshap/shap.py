@@ -382,14 +382,14 @@ class AdaptiveWinShap:
                     for f in range(F):
                         row[f"shap_full_l{l}_f{f}"] = float(out["shap_full"][l, f])
 
-            # Compute faithfulness if model and sequence are available
+            # Compute faithfulness and ablation if model and sequence are available
             if "_model" in out and "_X_last" in out:
                 try:
                     # Import here to avoid circular dependencies
                     import sys
                     import os
                     sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'examples'))
-                    from benchmarking.metrics import compute_point_faithfulness
+                    from benchmarking.metrics import compute_point_faithfulness, compute_point_ablation
 
                     # Use the aggregated SHAP values (per lag)
                     shap_vals = out["shap_lag"] if self.aggregate_lag else np.sum(np.abs(out["shap_full"]), axis=1)
@@ -403,10 +403,19 @@ class AdaptiveWinShap:
                         seq_len=self.seq_length
                     )
                     row.update(faithfulness)
+
+                    ablation = compute_point_ablation(
+                        model=out["_model"],
+                        shap_values=shap_vals,
+                        input_sequence=out["_X_last"],
+                        percentiles=[90, 70, 50],
+                        ablation_types=['mif', 'lif']
+                    )
+                    row.update(ablation)
                 except Exception as e:
-                    # If faithfulness computation fails, continue without it
+                    # If metric computation fails, continue without it
                     import warnings
-                    warnings.warn(f"Faithfulness computation failed: {e}")
+                    warnings.warn(f"Metric computation failed: {e}")
 
             records.append(row)
 

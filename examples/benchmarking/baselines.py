@@ -272,11 +272,12 @@ class GlobalSHAP:
 
         shap_per_lag = np.abs(shap_values)  # [N, seq_length]
 
-        # Compute faithfulness for each point
-        from .metrics import compute_point_faithfulness
+        # Compute faithfulness and ablation for each point
+        from .metrics import compute_point_faithfulness, compute_point_ablation
 
         faithfulness_scores = []
-        print(f"Computing faithfulness for {len(X_explain)} points...")
+        ablation_scores = []
+        print(f"Computing faithfulness and ablation for {len(X_explain)} points...")
         for i in range(len(X_explain)):
             faith = compute_point_faithfulness(
                 model=self.model,
@@ -287,6 +288,15 @@ class GlobalSHAP:
                 seq_len=self.seq_length
             )
             faithfulness_scores.append(faith)
+
+            ablation = compute_point_ablation(
+                model=self.model,
+                shap_values=shap_per_lag[i],  # [seq_length]
+                input_sequence=X_explain[i:i+1],  # [1, seq_length, 1]
+                percentiles=[90, 70, 50],
+                ablation_types=['mif', 'lif']
+            )
+            ablation_scores.append(ablation)
 
         # Create results DataFrame
         results = {
@@ -304,6 +314,10 @@ class GlobalSHAP:
         # Add faithfulness scores - ensure they are scalar values
         for key in faithfulness_scores[0].keys():
             results[key] = [float(f[key]) for f in faithfulness_scores]
+
+        # Add ablation scores - ensure they are scalar values
+        for key in ablation_scores[0].keys():
+            results[key] = [float(a[key]) for a in ablation_scores]
 
         return pd.DataFrame(results)
 
@@ -405,8 +419,8 @@ class RollingWindowSHAP:
             shap_values = explainer.shap_values(X_last_2d, nsamples=self.shap_nsamples)
             y_hat = model.predict(X_last)[0, 0]
 
-            # Compute faithfulness for this point (using the rolling window model)
-            from .metrics import compute_point_faithfulness
+            # Compute faithfulness and ablation for this point (using the rolling window model)
+            from .metrics import compute_point_faithfulness, compute_point_ablation
             shap_per_lag = np.abs(shap_values).squeeze()  # [seq_length]
 
             faithfulness = compute_point_faithfulness(
@@ -416,6 +430,14 @@ class RollingWindowSHAP:
                 percentiles=[90, 70, 50],
                 eval_types=['prtb', 'sqnc'],
                 seq_len=self.seq_length
+            )
+
+            ablation = compute_point_ablation(
+                model=model,  # Use the rolling window model
+                shap_values=shap_per_lag,
+                input_sequence=X_last,  # [1, seq_length, 1]
+                percentiles=[90, 70, 50],
+                ablation_types=['mif', 'lif']
             )
 
             # Store results
@@ -431,8 +453,9 @@ class RollingWindowSHAP:
             for lag in range(1, self.seq_length + 1):
                 result_row[f'shap_lag_t-{lag}'] = shap_per_lag[self.seq_length - lag]
 
-            # Add faithfulness scores
+            # Add faithfulness and ablation scores
             result_row.update(faithfulness)
+            result_row.update(ablation)
 
             results.append(result_row)
 
