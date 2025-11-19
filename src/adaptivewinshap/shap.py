@@ -39,6 +39,24 @@ class LSTMRegressor(nn.Module):
         yhat   = self.fc(h_last)          # [B, 1]
         return yhat.squeeze(-1)           # [B]
 
+    def predict(self, x):
+        """Prediction method compatible with faithfulness computation."""
+        self.eval()
+        with torch.no_grad():
+            if isinstance(x, np.ndarray):
+                x = torch.from_numpy(x).float()
+
+            # Get device from model parameters
+            device = next(self.parameters()).device
+            x = x.to(device)
+
+            # Handle both 2D and 3D inputs
+            if x.dim() == 2:
+                x = x.unsqueeze(-1)  # [N, seq_len] -> [N, seq_len, 1]
+
+            preds = self.forward(x)
+            return preds.cpu().numpy().reshape(-1, 1)
+
 
 # -------------------------
 # Utilities
@@ -276,6 +294,8 @@ class AdaptiveWinShap:
             "y_hat": y_hat,
             "shap_lag": shap_lag,
             "shap_full": shap_full,
+            "_model": model,  # Internal: model for faithfulness computation
+            "_X_last": X_seq[-1:]  # Internal: last sequence used for prediction
         }
 
     def rolling_explain(
@@ -361,6 +381,32 @@ class AdaptiveWinShap:
                 for l in range(L):
                     for f in range(F):
                         row[f"shap_full_l{l}_f{f}"] = float(out["shap_full"][l, f])
+
+            # Compute faithfulness if model and sequence are available
+            if "_model" in out and "_X_last" in out:
+                try:
+                    # Import here to avoid circular dependencies
+                    import sys
+                    import os
+                    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'examples'))
+                    from benchmarking.metrics import compute_point_faithfulness
+
+                    # Use the aggregated SHAP values (per lag)
+                    shap_vals = out["shap_lag"] if self.aggregate_lag else np.sum(np.abs(out["shap_full"]), axis=1)
+
+                    faithfulness = compute_point_faithfulness(
+                        model=out["_model"],
+                        shap_values=shap_vals,
+                        input_sequence=out["_X_last"],
+                        percentiles=[90, 70, 50],
+                        eval_types=['prtb', 'sqnc'],
+                        seq_len=self.seq_length
+                    )
+                    row.update(faithfulness)
+                except Exception as e:
+                    # If faithfulness computation fails, continue without it
+                    import warnings
+                    warnings.warn(f"Faithfulness computation failed: {e}")
 
             records.append(row)
 
