@@ -779,15 +779,29 @@ def create_summary_dashboard(data, save_dir):
 
 def main():
     """Main visualization function."""
-    # Configuration
-    results_dir = 'examples/results/benchmark_ar_3'
+    # ============================================================
+    # CHOOSE DATASET TYPE: 'simulated' or 'empirical'
+    # ============================================================
+    RUN_TYPE = "empirical"  # Change to "empirical" for empirical data
+
+    if RUN_TYPE == "simulated":
+        # Simulated dataset results directory
+        dataset_type = "ar"
+        order = "3"
+        results_dir = f'examples/results/benchmark_{dataset_type}_{order}'
+    elif RUN_TYPE == "empirical":
+        # Empirical dataset results directory
+        results_dir = 'examples/results/benchmark_empirical'
+    else:
+        raise ValueError(f"Invalid RUN_TYPE: {RUN_TYPE}. Must be 'simulated' or 'empirical'")
+
     save_dir = os.path.join(results_dir, 'figures')
 
     # Create figures directory
     os.makedirs(save_dir, exist_ok=True)
 
     print("="*60)
-    print("Benchmark Visualization")
+    print(f"Benchmark Visualization - {RUN_TYPE.title()} Data")
     print("="*60)
     print(f"Loading data from: {results_dir}")
 

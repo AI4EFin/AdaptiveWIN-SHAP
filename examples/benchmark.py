@@ -72,7 +72,11 @@ class AdaptiveLSTM(AdaptiveModel):
         return preds.detach().cpu().numpy().reshape(-1, 1)
 
 
-def run_benchmark(dataset_path, output_dir, device='cpu', verbose=True):
+def run_benchmark(dataset_path, output_dir, device='cpu', verbose=True,
+                  dataset_type='simulated', column_name='N', date_start=None, date_end=None,
+                  seq_length=3, hidden_size=16, num_layers=1, dropout=0.0, epochs=15,
+                  batch_size=64, lr=1e-2, max_background=100, shap_nsamples=500,
+                  rolling_window_size=100, rolling_stride=1, precomputed_windows_path=None):
     """
     Run comprehensive benchmark comparing different SHAP methods.
 
@@ -86,6 +90,38 @@ def run_benchmark(dataset_path, output_dir, device='cpu', verbose=True):
         Device for PyTorch models
     verbose : bool
         Print progress information
+    dataset_type : str
+        Type of dataset ('simulated' or 'empirical')
+    column_name : str
+        Name of the data column in the CSV
+    date_start : str or pd.Timestamp, optional
+        Start date for empirical datasets
+    date_end : str or pd.Timestamp, optional
+        End date for empirical datasets
+    seq_length : int
+        Sequence length for LSTM
+    hidden_size : int
+        Hidden size for LSTM
+    num_layers : int
+        Number of LSTM layers
+    dropout : float
+        Dropout rate
+    epochs : int
+        Training epochs
+    batch_size : int
+        Batch size
+    lr : float
+        Learning rate
+    max_background : int
+        Maximum background samples for SHAP
+    shap_nsamples : int
+        Number of SHAP samples
+    rolling_window_size : int
+        Window size for rolling SHAP
+    rolling_stride : int
+        Stride for rolling windows
+    precomputed_windows_path : str, optional
+        Path to pre-computed adaptive windows
     """
     # Create output directory
     os.makedirs(output_dir, exist_ok=True)
@@ -93,24 +129,36 @@ def run_benchmark(dataset_path, output_dir, device='cpu', verbose=True):
     # Load data
     if verbose:
         print(f"Loading dataset from {dataset_path}...")
-    df = pd.read_csv(dataset_path)
-    data = df['N'].to_numpy(dtype=np.float64)
+
+    if dataset_type == 'empirical':
+        df = pd.read_csv(dataset_path, index_col=0, parse_dates=True)
+
+        # Apply date filtering if specified
+        if date_start is not None and date_end is not None:
+            if verbose:
+                print(f"Filtering data from {date_start} to {date_end}...")
+            df = df.loc[date_start:date_end]
+
+        data = df[column_name].to_numpy(dtype=np.float32)
+    else:
+        df = pd.read_csv(dataset_path)
+        data = df[column_name].to_numpy(dtype=np.float64)
 
     if verbose:
         print(f"Dataset loaded: {len(data)} time points")
 
-    # Hyperparameters
-    SEQ_LENGTH = 3
-    HIDDEN_SIZE = 16
-    NUM_LAYERS = 1
-    DROPOUT = 0.0
-    EPOCHS = 15
-    BATCH_SIZE = 64
-    LR = 1e-2
-    MAX_BACKGROUND = 100
-    SHAP_NSAMPLES = 500
-    ROLLING_WINDOW_SIZE = 100
-    ROLLING_STRIDE = 1
+    # Hyperparameters (now passed as arguments)
+    SEQ_LENGTH = seq_length
+    HIDDEN_SIZE = hidden_size
+    NUM_LAYERS = num_layers
+    DROPOUT = dropout
+    EPOCHS = epochs
+    BATCH_SIZE = batch_size
+    LR = lr
+    MAX_BACKGROUND = max_background
+    SHAP_NSAMPLES = shap_nsamples
+    ROLLING_WINDOW_SIZE = rolling_window_size
+    ROLLING_STRIDE = rolling_stride
 
     results = {}
 
@@ -181,14 +229,14 @@ def run_benchmark(dataset_path, output_dir, device='cpu', verbose=True):
         print("Method 3: Adaptive SHAP (Pre-computed Adaptive Windows)")
         print("="*60)
 
-    # Use pre-computed windows
-    precomputed_windows_path = "examples/results/LSTM/ar_3/Jump_1_N0_100/windows.csv"
-
-    if verbose:
+    if verbose and precomputed_windows_path:
         print(f"Loading pre-computed windows from {precomputed_windows_path}...")
 
-    if not os.path.exists(precomputed_windows_path):
-        print(f"ERROR: Pre-computed windows file not found: {precomputed_windows_path}")
+    if precomputed_windows_path is None or not os.path.exists(precomputed_windows_path):
+        if precomputed_windows_path:
+            print(f"ERROR: Pre-computed windows file not found: {precomputed_windows_path}")
+        else:
+            print("WARNING: No pre-computed windows path provided.")
         print("Skipping Adaptive SHAP method.")
     else:
         detection_df = pd.read_csv(precomputed_windows_path)
@@ -366,28 +414,129 @@ if __name__ == "__main__":
     elif torch.mps.is_available():
         DEVICE = "mps"
 
-    dataset_type = "ar"
-    order = "3"
+    # ============================================================
+    # CHOOSE DATASET TYPE: 'simulated' or 'empirical'
+    # ============================================================
+    RUN_TYPE = "empirical"  # Change to "empirical" for empirical data
 
-    # Paths
-    dataset_path = f"examples/datasets/simulated/{dataset_type}/{order}.csv"
-    output_dir = f"examples/results/benchmark_{dataset_type}_{order}"
+    if RUN_TYPE == "simulated":
+        # ========== Simulated Dataset Configuration ==========
+        dataset_type = "ar"
+        order = "3"
 
-    print("="*60)
-    print("SHAP Methods Benchmarking")
-    print("="*60)
-    print(f"Device: {DEVICE}")
-    print(f"Dataset: {dataset_path}")
-    print(f"Output: {output_dir}")
-    print("="*60)
+        # Paths
+        dataset_path = f"examples/datasets/simulated/{dataset_type}/{order}.csv"
+        output_dir = f"examples/results/benchmark_{dataset_type}_{order}"
 
-    # Run benchmark
-    summary = run_benchmark(
-        dataset_path=dataset_path,
-        output_dir=output_dir,
-        device=DEVICE,
-        verbose=True
-    )
+        # Hyperparameters for simulated data
+        SEQ_LENGTH = 3
+        HIDDEN_SIZE = 16
+        NUM_LAYERS = 1
+        DROPOUT = 0.0
+        EPOCHS = 15
+        BATCH_SIZE = 64
+        LR = 1e-2
+        MAX_BACKGROUND = 100
+        SHAP_NSAMPLES = 500
+        ROLLING_WINDOW_SIZE = 100
+        ROLLING_STRIDE = 1
+
+        # Pre-computed windows path
+        PRECOMPUTED_WINDOWS = f"examples/results/LSTM/{dataset_type}_{order}/Jump_1_N0_100/windows.csv"
+
+        print("="*60)
+        print("SHAP Methods Benchmarking - Simulated Data")
+        print("="*60)
+        print(f"Device: {DEVICE}")
+        print(f"Dataset: {dataset_path}")
+        print(f"Output: {output_dir}")
+        print("="*60)
+
+        # Run benchmark
+        summary = run_benchmark(
+            dataset_path=dataset_path,
+            output_dir=output_dir,
+            device=DEVICE,
+            verbose=True,
+            dataset_type='simulated',
+            column_name='N',
+            seq_length=SEQ_LENGTH,
+            hidden_size=HIDDEN_SIZE,
+            num_layers=NUM_LAYERS,
+            dropout=DROPOUT,
+            epochs=EPOCHS,
+            batch_size=BATCH_SIZE,
+            lr=LR,
+            max_background=MAX_BACKGROUND,
+            shap_nsamples=SHAP_NSAMPLES,
+            rolling_window_size=ROLLING_WINDOW_SIZE,
+            rolling_stride=ROLLING_STRIDE,
+            precomputed_windows_path=PRECOMPUTED_WINDOWS
+        )
+
+    elif RUN_TYPE == "empirical":
+        # ========== Empirical Dataset Configuration ==========
+        # Paths
+        dataset_path = "examples/datasets/empirical/dataset.csv"
+        output_dir = "examples/results/benchmark_empirical"
+
+        # Date range for filtering (matching lstm_empirical.py)
+        DATE_START = pd.Timestamp("2021-05-01 00:00:00", tz="Europe/Bucharest")
+        DATE_END = pd.Timestamp("2021-08-01 00:00:00", tz="Europe/Bucharest")
+
+        # Hyperparameters for empirical data (matching lstm_empirical.py)
+        SEQ_LENGTH = 24  # 1 day (hourly data)
+        HIDDEN_SIZE = 16
+        NUM_LAYERS = 1
+        DROPOUT = 0.0
+        EPOCHS = 15
+        BATCH_SIZE = 64
+        LR = 1e-2
+        MAX_BACKGROUND = 500
+        SHAP_NSAMPLES = 500
+        ROLLING_WINDOW_SIZE = 168  # 1 week
+        ROLLING_STRIDE = 1
+
+        # Pre-computed windows path (matching lstm_empirical.py output)
+        JUMP = 1
+        N_0 = 72
+        PRECOMPUTED_WINDOWS = f"examples/results/LSTM/empirical/Jump_{JUMP}_N0_{N_0}/windows.csv"
+
+        print("="*60)
+        print("SHAP Methods Benchmarking - Empirical Data")
+        print("="*60)
+        print(f"Device: {DEVICE}")
+        print(f"Dataset: {dataset_path}")
+        print(f"Date Range: {DATE_START} to {DATE_END}")
+        print(f"Output: {output_dir}")
+        print("="*60)
+
+        # Run benchmark
+        summary = run_benchmark(
+            dataset_path=dataset_path,
+            output_dir=output_dir,
+            device=DEVICE,
+            verbose=True,
+            dataset_type='empirical',
+            column_name='Price Day Ahead',
+            date_start=DATE_START,
+            date_end=DATE_END,
+            seq_length=SEQ_LENGTH,
+            hidden_size=HIDDEN_SIZE,
+            num_layers=NUM_LAYERS,
+            dropout=DROPOUT,
+            epochs=EPOCHS,
+            batch_size=BATCH_SIZE,
+            lr=LR,
+            max_background=MAX_BACKGROUND,
+            shap_nsamples=SHAP_NSAMPLES,
+            rolling_window_size=ROLLING_WINDOW_SIZE,
+            rolling_stride=ROLLING_STRIDE,
+            precomputed_windows_path=PRECOMPUTED_WINDOWS
+        )
+
+    else:
+        raise ValueError(f"Invalid RUN_TYPE: {RUN_TYPE}. Must be 'simulated' or 'empirical'")
 
     print("\n" + "="*60)
     print("Benchmarking Complete!")
