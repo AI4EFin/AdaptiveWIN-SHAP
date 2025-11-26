@@ -14,15 +14,22 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from pathlib import Path
 
-# Set style
-plt.style.use('seaborn-v0_8-darkgrid')
+# Set style - clean for presentations
 sns.set_palette("husl")
 plt.rcParams['figure.dpi'] = 150
 plt.rcParams['savefig.dpi'] = 300
+plt.rcParams['savefig.transparent'] = True
+plt.rcParams['figure.facecolor'] = 'none'
+plt.rcParams['axes.facecolor'] = 'none'
 plt.rcParams['font.size'] = 10
 plt.rcParams['axes.labelsize'] = 11
 plt.rcParams['axes.titlesize'] = 12
 plt.rcParams['legend.fontsize'] = 9
+plt.rcParams['axes.grid'] = False
+plt.rcParams['axes.spines.top'] = True
+plt.rcParams['axes.spines.right'] = True
+plt.rcParams['axes.edgecolor'] = 'black'
+plt.rcParams['axes.linewidth'] = 1.0
 
 
 def load_benchmark_data(results_dir):
@@ -35,10 +42,18 @@ def load_benchmark_data(results_dir):
         data['summary'] = pd.read_csv(summary_path)
 
     # Load individual method results
-    for method in ['global_shap', 'rolling_shap', 'adaptive_shap']:
+    # Load global and adaptive variants
+    for method in ['global_shap', 'adaptive_shap', 'adaptive_shap_rolling_mean']:
         result_path = os.path.join(results_dir, f'{method}_results.csv')
         if os.path.exists(result_path):
             data[method] = pd.read_csv(result_path)
+
+    # Load rolling window variants
+    for suffix in ['', '_max', '_mean']:
+        method_key = f'rolling_shap{suffix}'
+        result_path = os.path.join(results_dir, f'{method_key}_results.csv')
+        if os.path.exists(result_path):
+            data[method_key] = pd.read_csv(result_path)
 
     # Load config
     config_path = os.path.join(results_dir, 'config.json')
@@ -51,6 +66,20 @@ def load_benchmark_data(results_dir):
     windows_path = os.path.join(results_dir, 'temp_windows.csv')
     if os.path.exists(windows_path):
         data['windows'] = pd.read_csv(windows_path)
+
+    # Load true importances if available (from dataset directory)
+    if 'config' in data:
+        dataset_path = data['config'].get('dataset', '')
+        if 'simulated' in dataset_path:
+            # Extract dataset name from path
+            # e.g., "examples/datasets/simulated/arx_rotating/data.csv" -> "arx_rotating"
+            parts = dataset_path.split('/')
+            if len(parts) >= 4:
+                dataset_name = parts[-2]
+                true_imp_path = f"examples/datasets/simulated/{dataset_name}/true_importances.csv"
+                if os.path.exists(true_imp_path):
+                    data['true_importances'] = pd.read_csv(true_imp_path)
+                    print(f"Loaded true importances from: {true_imp_path}")
 
     return data
 
@@ -73,7 +102,7 @@ def plot_faithfulness_comparison(data, save_dir):
         print("No faithfulness metrics found in summary - skipping faithfulness comparison")
         return
 
-    fig, axes = plt.subplots(2, 3, figsize=(15, 10))
+    fig, axes = plt.subplots(2, 3, figsize=(18, 10))
     fig.suptitle('Faithfulness Comparison Across Methods', fontsize=14, fontweight='bold')
 
     eval_types = ['prtb', 'sqnc']
@@ -90,14 +119,36 @@ def plot_faithfulness_comparison(data, save_dir):
                 methods = []
                 scores = []
                 colors = []
-                color_map = {'global_shap': '#1f77b4', 'rolling_shap': '#ff7f0e', 'adaptive_shap': '#2ca02c'}
+                color_map = {
+                    'global_shap': '#1f77b4',
+                    'rolling_shap': '#ff7f0e',
+                    'rolling_shap_max': '#9467bd',
+                    'rolling_shap_mean': '#8c564b',
+                    'adaptive_shap': '#2ca02c',
+                    'adaptive_shap_rolling_mean': '#d62728'
+                }
 
-                for method in ['global_shap', 'rolling_shap', 'adaptive_shap']:
-                    method_data = subset[subset['method'] == method]
-                    if len(method_data) > 0:
-                        methods.append(method.replace('_', ' ').title())
-                        scores.append(method_data['score'].values[0])
-                        colors.append(color_map.get(method, '#888888'))
+                # Dynamically get all methods in the data
+                available_methods = subset['method'].unique()
+                method_order = ['global_shap', 'rolling_shap', 'rolling_shap_max', 'rolling_shap_mean', 'adaptive_shap', 'adaptive_shap_rolling_mean']
+
+                for method in method_order:
+                    if method in available_methods:
+                        method_data = subset[subset['method'] == method]
+                        if len(method_data) > 0:
+                            # Format method name for display
+                            if method == 'rolling_shap_max':
+                                display_name = 'Rolling (Max)'
+                            elif method == 'rolling_shap_mean':
+                                display_name = 'Rolling (Mean)'
+                            elif method == 'adaptive_shap_rolling_mean':
+                                display_name = 'Adaptive (Smooth)'
+                            else:
+                                display_name = method.replace('_', ' ').title()
+
+                            methods.append(display_name)
+                            scores.append(method_data['score'].values[0])
+                            colors.append(color_map.get(method, '#888888'))
 
                 if methods:
                     bars = ax.bar(range(len(methods)), scores, color=colors, alpha=0.7, edgecolor='black')
@@ -105,8 +156,6 @@ def plot_faithfulness_comparison(data, save_dir):
                     ax.set_xticklabels(methods, rotation=45, ha='right')
                     ax.set_ylabel('Faithfulness Score')
                     ax.set_title(f'{eval_type.upper()} - {percentile.upper()}')
-                    ax.grid(True, alpha=0.3, axis='y')
-
                     # Add value labels on bars
                     for bar in bars:
                         height = bar.get_height()
@@ -139,7 +188,7 @@ def plot_ablation_comparison(data, save_dir):
         print("No ablation metrics found in summary - skipping ablation comparison")
         return
 
-    fig, axes = plt.subplots(2, 3, figsize=(15, 10))
+    fig, axes = plt.subplots(2, 3, figsize=(18, 10))
     fig.suptitle('Ablation Score Comparison Across Methods', fontsize=14, fontweight='bold')
 
     ablation_types = ['mif', 'lif']
@@ -156,14 +205,36 @@ def plot_ablation_comparison(data, save_dir):
                 methods = []
                 scores = []
                 colors = []
-                color_map = {'global_shap': '#1f77b4', 'rolling_shap': '#ff7f0e', 'adaptive_shap': '#2ca02c'}
+                color_map = {
+                    'global_shap': '#1f77b4',
+                    'rolling_shap': '#ff7f0e',
+                    'rolling_shap_max': '#9467bd',
+                    'rolling_shap_mean': '#8c564b',
+                    'adaptive_shap': '#2ca02c',
+                    'adaptive_shap_rolling_mean': '#d62728'
+                }
 
-                for method in ['global_shap', 'rolling_shap', 'adaptive_shap']:
-                    method_data = subset[subset['method'] == method]
-                    if len(method_data) > 0:
-                        methods.append(method.replace('_', ' ').title())
-                        scores.append(method_data['score'].values[0])
-                        colors.append(color_map.get(method, '#888888'))
+                # Dynamically get all methods in the data
+                available_methods = subset['method'].unique()
+                method_order = ['global_shap', 'rolling_shap', 'rolling_shap_max', 'rolling_shap_mean', 'adaptive_shap', 'adaptive_shap_rolling_mean']
+
+                for method in method_order:
+                    if method in available_methods:
+                        method_data = subset[subset['method'] == method]
+                        if len(method_data) > 0:
+                            # Format method name for display
+                            if method == 'rolling_shap_max':
+                                display_name = 'Rolling (Max)'
+                            elif method == 'rolling_shap_mean':
+                                display_name = 'Rolling (Mean)'
+                            elif method == 'adaptive_shap_rolling_mean':
+                                display_name = 'Adaptive (Smooth)'
+                            else:
+                                display_name = method.replace('_', ' ').title()
+
+                            methods.append(display_name)
+                            scores.append(method_data['score'].values[0])
+                            colors.append(color_map.get(method, '#888888'))
 
                 if methods:
                     bars = ax.bar(range(len(methods)), scores, color=colors, alpha=0.7, edgecolor='black')
@@ -171,8 +242,6 @@ def plot_ablation_comparison(data, save_dir):
                     ax.set_xticklabels(methods, rotation=45, ha='right')
                     ax.set_ylabel('Ablation Score')
                     ax.set_title(f'{ablation_type.upper()} - {percentile.upper()}')
-                    ax.grid(True, alpha=0.3, axis='y')
-
                     # Add value labels on bars
                     for bar in bars:
                         height = bar.get_height()
@@ -209,7 +278,14 @@ def plot_ablation_mif_vs_lif(data, save_dir):
                  fontsize=14, fontweight='bold')
 
     percentiles = ['p90', 'p70', 'p50']
-    color_map = {'global_shap': '#1f77b4', 'rolling_shap': '#ff7f0e', 'adaptive_shap': '#2ca02c'}
+    color_map = {
+        'global_shap': '#1f77b4',
+        'rolling_shap': '#ff7f0e',
+        'rolling_shap_max': '#9467bd',
+        'rolling_shap_mean': '#8c564b',
+        'adaptive_shap': '#2ca02c',
+        'adaptive_shap_rolling_mean': '#d62728'
+    }
 
     for j, percentile in enumerate(percentiles):
         ax = axes[j]
@@ -250,9 +326,7 @@ def plot_ablation_mif_vs_lif(data, save_dir):
             ax.set_title(f'Percentile: {percentile.upper()}')
             ax.set_xticks(x)
             ax.set_xticklabels(methods, rotation=45, ha='right')
-            ax.legend()
-            ax.grid(True, alpha=0.3, axis='y')
-
+            ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=3, frameon=False)
             # Add value labels
             for bar in bars1:
                 height = bar.get_height()
@@ -279,7 +353,7 @@ def plot_shap_over_time(data, save_dir):
     methods = [
         ('global_shap', 'Vanilla SHAP', 'shap_lag_t'),
         ('rolling_shap', 'Rolling Window SHAP', 'shap_lag_t'),
-        ('adaptive_shap', 'Adaptive SHAP', 'shap_lstm_t')
+        ('adaptive_shap', 'Adaptive SHAP', 'shap_lag_t')
     ]
 
     for idx, (method_key, method_name, shap_prefix) in enumerate(methods):
@@ -305,9 +379,7 @@ def plot_shap_over_time(data, save_dir):
         ax.set_xlabel('Time Index')
         ax.set_ylabel('|SHAP Value|')
         ax.set_title(method_name)
-        ax.legend(loc='upper right')
-        ax.grid(True, alpha=0.3)
-
+        ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=3, frameon=False)
     plt.tight_layout()
     plt.savefig(os.path.join(save_dir, 'shap_over_time.png'), bbox_inches='tight')
     print(f"Saved: shap_over_time.png")
@@ -319,7 +391,7 @@ def plot_shap_heatmaps(data, save_dir):
     methods = [
         ('global_shap', 'Vanilla SHAP', 'shap_lag_t'),
         ('rolling_shap', 'Rolling Window SHAP', 'shap_lag_t'),
-        ('adaptive_shap', 'Adaptive SHAP', 'shap_lstm_t')
+        ('adaptive_shap', 'Adaptive SHAP', 'shap_lag_t')
     ]
 
     fig, axes = plt.subplots(1, 3, figsize=(18, 5))
@@ -398,9 +470,7 @@ def plot_prediction_comparison(data, save_dir):
     ax.set_xlabel('Time Index')
     ax.set_ylabel('Prediction')
     ax.set_title('Predictions Over Time')
-    ax.legend()
-    ax.grid(True, alpha=0.3)
-
+    ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=3, frameon=False)
     # Scatter plots
     scatter_pairs = [
         (('global_shap', 'rolling_shap'), 'Global vs Rolling', axes[0, 1]),
@@ -441,8 +511,6 @@ def plot_prediction_comparison(data, save_dir):
             ax.set_xlabel(method1.replace('_', ' ').title())
             ax.set_ylabel(method2.replace('_', ' ').title())
             ax.set_title(title)
-            ax.grid(True, alpha=0.3)
-
     plt.tight_layout()
     plt.savefig(os.path.join(save_dir, 'prediction_comparison.png'), bbox_inches='tight')
     print(f"Saved: prediction_comparison.png")
@@ -479,9 +547,7 @@ def plot_window_size_analysis(data, save_dir):
     ax.set_xlabel('Time Index')
     ax.set_ylabel('Window Size')
     ax.set_title('Window Size Over Time')
-    ax.legend()
-    ax.grid(True, alpha=0.3)
-
+    ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=3, frameon=False)
     # Plot window size distribution
     ax = axes[1]
     if 'window_len' in adaptive_df.columns:
@@ -500,9 +566,7 @@ def plot_window_size_analysis(data, save_dir):
         ax.set_xlabel('Window Size')
         ax.set_ylabel('Frequency')
         ax.set_title('Distribution of Adaptive Window Sizes')
-        ax.legend()
-        ax.grid(True, alpha=0.3)
-
+        ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=3, frameon=False)
     plt.tight_layout()
     plt.savefig(os.path.join(save_dir, 'window_size_analysis.png'), bbox_inches='tight')
     print(f"Saved: window_size_analysis.png")
@@ -547,9 +611,7 @@ def plot_temporal_faithfulness(data, save_dir):
             ax.set_xlabel('Time Index')
             ax.set_ylabel('Faithfulness Score')
             ax.set_title(f'{eval_type.upper()} - {percentile.upper()}')
-            ax.legend(loc='best')
-            ax.grid(True, alpha=0.3)
-
+            ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=3, frameon=False)
     plt.tight_layout()
     plt.savefig(os.path.join(save_dir, 'temporal_faithfulness.png'), bbox_inches='tight')
     print(f"Saved: temporal_faithfulness.png")
@@ -594,9 +656,7 @@ def plot_temporal_ablation(data, save_dir):
             ax.set_xlabel('Time Index')
             ax.set_ylabel('Ablation Score')
             ax.set_title(f'{ablation_type.upper()} - {percentile.upper()}')
-            ax.legend(loc='best')
-            ax.grid(True, alpha=0.3)
-
+            ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=3, frameon=False)
     plt.tight_layout()
     plt.savefig(os.path.join(save_dir, 'temporal_ablation.png'), bbox_inches='tight')
     print(f"Saved: temporal_ablation.png")
@@ -629,9 +689,16 @@ def create_summary_dashboard(data, save_dir):
         methods = []
         faith_scores = []
         ablation_scores = []
-        colors = {'global_shap': '#1f77b4', 'rolling_shap': '#ff7f0e', 'adaptive_shap': '#2ca02c'}
+        colors = {
+            'global_shap': '#1f77b4',
+            'rolling_shap': '#ff7f0e',
+            'rolling_shap_max': '#9467bd',
+            'rolling_shap_mean': '#8c564b',
+            'adaptive_shap': '#2ca02c',
+            'adaptive_shap_rolling_mean': '#d62728'
+        }
 
-        for method in ['global_shap', 'rolling_shap', 'adaptive_shap']:
+        for method in ['global_shap', 'rolling_shap', 'rolling_shap_max', 'rolling_shap_mean', 'adaptive_shap', 'adaptive_shap_rolling_mean']:
             if len(faith_data) > 0:
                 m_faith = faith_data[faith_data['method'] == method]
                 if len(m_faith) > 0:
@@ -663,9 +730,7 @@ def create_summary_dashboard(data, save_dir):
             ax1.set_xticklabels(methods, rotation=45, ha='right')
             ax1.set_ylabel('Score')
             ax1.set_title('Faithfulness & Ablation Score Comparison')
-            ax1.legend()
-            ax1.grid(True, alpha=0.3, axis='y')
-
+            ax1.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=3, frameon=False)
             # Add value labels on bars
             for bar in bars1:
                 height = bar.get_height()
@@ -711,7 +776,7 @@ def create_summary_dashboard(data, save_dir):
     ax3 = fig.add_subplot(gs[1, :])
     for method_key, label, shap_prefix in [('global_shap', 'Global', 'shap_lag_t'),
                                             ('rolling_shap', 'Rolling', 'shap_lag_t'),
-                                            ('adaptive_shap', 'Adaptive', 'shap_lstm_t')]:
+                                            ('adaptive_shap', 'Adaptive', 'shap_lag_t')]:
         if method_key in data:
             df = data[method_key]
             shap_cols = [c for c in df.columns if c.startswith(shap_prefix)]
@@ -722,9 +787,7 @@ def create_summary_dashboard(data, save_dir):
     ax3.set_xlabel('Time Index')
     ax3.set_ylabel('Total |SHAP|')
     ax3.set_title('Total SHAP Values Over Time')
-    ax3.legend()
-    ax3.grid(True, alpha=0.3)
-
+    ax3.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=3, frameon=False)
     # 4. Prediction scatter (Global vs others)
     ax4 = fig.add_subplot(gs[2, 0])
     if 'global_shap' in data and 'rolling_shap' in data:
@@ -740,8 +803,6 @@ def create_summary_dashboard(data, save_dir):
         ax4.set_xlabel('Global')
         ax4.set_ylabel('Rolling')
         ax4.set_title('Global vs Rolling Predictions')
-        ax4.grid(True, alpha=0.3)
-
     ax5 = fig.add_subplot(gs[2, 1])
     if 'global_shap' in data and 'adaptive_shap' in data:
         df1 = data['global_shap']
@@ -756,8 +817,6 @@ def create_summary_dashboard(data, save_dir):
         ax5.set_xlabel('Global')
         ax5.set_ylabel('Adaptive')
         ax5.set_title('Global vs Adaptive Predictions')
-        ax5.grid(True, alpha=0.3)
-
     # 5. Window size distribution (if adaptive)
     ax6 = fig.add_subplot(gs[2, 2])
     if 'adaptive_shap' in data:
@@ -769,31 +828,745 @@ def create_summary_dashboard(data, save_dir):
             ax6.set_xlabel('Window Size')
             ax6.set_ylabel('Frequency')
             ax6.set_title('Adaptive Window Sizes')
-            ax6.legend()
-            ax6.grid(True, alpha=0.3, axis='y')
-
+            ax6.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=3, frameon=False)
     plt.savefig(os.path.join(save_dir, 'summary_dashboard.png'), bbox_inches='tight')
     print(f"Saved: summary_dashboard.png")
     plt.close()
 
 
+def plot_true_importance_heatmap(data, save_dir):
+    """Plot heatmap of true feature importances over time."""
+    if 'true_importances' not in data:
+        print("No true importances available - skipping true importance heatmap")
+        return
+
+    true_imp_df = data['true_importances']
+
+    fig, ax = plt.subplots(1, 1, figsize=(14, 6))
+    fig.suptitle('Ground Truth Feature Importances Over Time', fontsize=14, fontweight='bold')
+
+    # Get importance columns
+    imp_cols = [c for c in true_imp_df.columns if c.startswith('true_imp_')]
+
+    if len(imp_cols) == 0:
+        print("No importance columns found")
+        return
+
+    # Create heatmap data
+    true_imp_matrix = true_imp_df[imp_cols].values.T
+
+    # Plot heatmap with a diverging colormap
+    im = ax.imshow(true_imp_matrix, aspect='auto', cmap='RdYlGn', interpolation='nearest')
+    ax.set_xlabel('Time Index (every 100th shown)')
+    ax.set_ylabel('Feature')
+    ax.set_title('True Feature Importances (Ground Truth)')
+
+    # Set y-axis labels (feature names)
+    ax.set_yticks(range(len(imp_cols)))
+    feature_names = [f'Feature {i}' for i in range(len(imp_cols))]
+    ax.set_yticklabels(feature_names)
+
+    # Set x-axis labels (show every 100th index)
+    if len(true_imp_df) > 10:
+        step = max(len(true_imp_df) // 10, 1)
+        ax.set_xticks(range(0, len(true_imp_df), step))
+        ax.set_xticklabels([f'{i}' for i in range(0, len(true_imp_df), step)],
+                          rotation=45)
+
+    # Add colorbar
+    plt.colorbar(im, ax=ax, label='Importance Value')
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, 'true_importance_heatmap.png'), bbox_inches='tight')
+    print(f"Saved: true_importance_heatmap.png")
+    plt.close()
+
+
+def plot_shap_vs_true_importance_heatmaps(data, save_dir):
+    """Create side-by-side heatmaps comparing SHAP values with true importances."""
+    if 'true_importances' not in data:
+        print("No true importances available - skipping SHAP vs true importance comparison")
+        return
+
+    true_imp_df = data['true_importances']
+    imp_cols = [c for c in true_imp_df.columns if c.startswith('true_imp_')]
+    n_features = len(imp_cols)
+
+    # Create comparison for each method - include all rolling variants
+    methods = [
+        ('global_shap', 'Vanilla SHAP'),
+        ('rolling_shap', 'Rolling (Fixed 100)'),
+        ('rolling_shap_max', 'Rolling (Max)'),
+        ('rolling_shap_mean', 'Rolling (Mean)'),
+        ('adaptive_shap', 'Adaptive SHAP')
+    ]
+
+    for method_key, method_name in methods:
+        if method_key not in data:
+            continue
+
+        df = data[method_key]
+
+        # Find ALL SHAP columns (lags and covariates)
+        # Pattern: shap_*_t-* for lags, shap_*_Z* for covariates
+        shap_cols = [c for c in df.columns if c.startswith('shap_') and
+                     ('t-' in c or '_Z' in c or 'lag' in c or 'lstm' in c)]
+
+        if len(shap_cols) == 0:
+            continue
+
+        # Separate lags and covariates
+        lag_cols = [c for c in shap_cols if 't-' in c]
+        cov_cols = [c for c in shap_cols if '_Z' in c or 'covariate' in c.lower()]
+
+        # Sort lag columns by lag number
+        def extract_lag(col_name):
+            parts = col_name.split('t-')
+            if len(parts) > 1:
+                try:
+                    return int(parts[-1])
+                except:
+                    return 0
+            return 0
+
+        lag_cols = sorted(lag_cols, key=extract_lag)
+
+        # Sort covariate columns by number
+        def extract_cov_num(col_name):
+            parts = col_name.split('Z')
+            if len(parts) > 1:
+                try:
+                    # Extract number after Z (e.g., "shap_Z0" -> 0)
+                    return int(''.join(filter(str.isdigit, parts[-1])))
+                except:
+                    return 999
+            return 999
+
+        cov_cols = sorted(cov_cols, key=extract_cov_num)
+
+        # Combine: lags first, then covariates
+        shap_cols = lag_cols + cov_cols
+
+        if len(shap_cols) == 0:
+            continue
+
+        # Create figure with two subplots side by side
+        fig, axes = plt.subplots(1, 2, figsize=(18, 6))
+        fig.suptitle(f'{method_name} vs Ground Truth Importances', fontsize=14, fontweight='bold')
+
+        # Left: SHAP values
+        ax = axes[0]
+        shap_matrix = df[shap_cols].values.T
+
+        # Normalize SHAP values row-wise for better comparison
+        shap_matrix_norm = shap_matrix / (shap_matrix.sum(axis=0, keepdims=True) + 1e-10)
+
+        im1 = ax.imshow(shap_matrix_norm, aspect='auto', cmap='RdYlGn', interpolation='nearest',
+                       vmin=0, vmax=1)
+        ax.set_xlabel('Time Index')
+        ax.set_ylabel('Feature')
+        ax.set_title(f'{method_name} (Normalized)')
+
+        # Set y-axis labels
+        ax.set_yticks(range(len(shap_cols)))
+        ax.set_yticklabels([f'Feature {i}' for i in range(len(shap_cols))])
+
+        # Set x-axis labels
+        if len(df) > 10:
+            step = max(len(df) // 10, 1)
+            ax.set_xticks(range(0, len(df), step))
+            ax.set_xticklabels([f'{int(df.iloc[i]["end_index"])}' for i in range(0, len(df), step)],
+                              rotation=45)
+
+        plt.colorbar(im1, ax=ax, label='Normalized Importance')
+
+        # Right: True importances (aligned with SHAP timepoints)
+        ax = axes[1]
+
+        # Align true importances with SHAP end indices
+        if 'end_index' in df.columns:
+            # Sample true importances at SHAP timepoints
+            end_indices = df['end_index'].values.astype(int)
+            # Ensure indices are within bounds
+            end_indices = np.clip(end_indices, 0, len(true_imp_df) - 1)
+            true_imp_aligned = true_imp_df.iloc[end_indices][imp_cols[:len(shap_cols)]].values.T
+        else:
+            # If no end_index, just take first N rows
+            true_imp_aligned = true_imp_df[imp_cols[:len(shap_cols)]].iloc[:len(df)].values.T
+
+        im2 = ax.imshow(true_imp_aligned, aspect='auto', cmap='RdYlGn', interpolation='nearest',
+                       vmin=0, vmax=1)
+        ax.set_xlabel('Time Index')
+        ax.set_ylabel('Feature')
+        ax.set_title('Ground Truth Importances')
+
+        # Set y-axis labels
+        ax.set_yticks(range(len(shap_cols)))
+        ax.set_yticklabels([f'Feature {i}' for i in range(len(shap_cols))])
+
+        # Set x-axis labels (same as left plot)
+        if len(df) > 10:
+            step = max(len(df) // 10, 1)
+            ax.set_xticks(range(0, len(df), step))
+            ax.set_xticklabels([f'{int(df.iloc[i]["end_index"])}' for i in range(0, len(df), step)],
+                              rotation=45)
+
+        plt.colorbar(im2, ax=ax, label='True Importance')
+
+        plt.tight_layout()
+        filename = f'shap_vs_true_{method_key}.png'
+        plt.savefig(os.path.join(save_dir, filename), bbox_inches='tight')
+        print(f"Saved: {filename}")
+        plt.close()
+
+
+def plot_correlation_with_true_importance(data, save_dir):
+    """Plot correlation between SHAP values and true importances for each method."""
+    if 'true_importances' not in data:
+        print("No true importances available - skipping correlation analysis")
+        return
+
+    true_imp_df = data['true_importances']
+    imp_cols = [c for c in true_imp_df.columns if c.startswith('true_imp_')]
+
+    # Include all rolling window variants
+    methods = [
+        ('global_shap', 'Vanilla SHAP', 'shap_lag_t', '#1f77b4'),
+        ('rolling_shap', 'Rolling (Fixed 100)', 'shap_lag_t', '#ff7f0e'),
+        ('rolling_shap_max', 'Rolling (Max)', 'shap_lag_t', '#9467bd'),
+        ('rolling_shap_mean', 'Rolling (Mean)', 'shap_lag_t', '#8c564b'),
+        ('adaptive_shap', 'Adaptive SHAP', 'shap_lag_t', '#2ca02c')
+    ]
+
+    # Filter to only include available methods
+    available_methods = [(k, n, p, c) for k, n, p, c in methods if k in data]
+    n_methods = len(available_methods)
+
+    fig, axes = plt.subplots(1, n_methods, figsize=(5 * n_methods, 5))
+    if n_methods == 1:
+        axes = [axes]  # Make it iterable
+    fig.suptitle('Correlation: SHAP Values vs Ground Truth Importances',
+                 fontsize=14, fontweight='bold')
+
+    for idx, (method_key, method_name, shap_prefix, color) in enumerate(available_methods):
+        if method_key not in data:
+            continue
+
+        ax = axes[idx]
+        df = data[method_key]
+        shap_cols = [c for c in df.columns if c.startswith(shap_prefix)]
+
+        if len(shap_cols) == 0:
+            ax.text(0.5, 0.5, 'No data', ha='center', va='center')
+            ax.set_title(method_name)
+            continue
+
+        # Sort SHAP columns
+        def extract_lag(col_name):
+            parts = col_name.split('t-')
+            if len(parts) > 1:
+                return int(parts[-1])
+            return 0
+
+        shap_cols = sorted(shap_cols, key=extract_lag)
+        n_features = min(len(shap_cols), len(imp_cols))
+
+        # Calculate correlation for each feature
+        correlations = []
+        feature_labels = []
+
+        for i in range(n_features):
+            # Align data
+            if 'end_index' in df.columns:
+                end_indices = df['end_index'].values.astype(int)
+                end_indices = np.clip(end_indices, 0, len(true_imp_df) - 1)
+                true_vals = true_imp_df.iloc[end_indices][imp_cols[i]].values
+            else:
+                true_vals = true_imp_df[imp_cols[i]].iloc[:len(df)].values
+
+            # Normalize SHAP values
+            shap_vals = df[shap_cols[i]].values
+            shap_total = df[shap_cols].sum(axis=1).values + 1e-10
+            shap_vals_norm = shap_vals / shap_total
+
+            # Calculate correlation
+            if len(true_vals) == len(shap_vals_norm):
+                corr = np.corrcoef(true_vals, shap_vals_norm)[0, 1]
+                correlations.append(corr)
+                feature_labels.append(f'Feat {i}')
+
+        if correlations:
+            bars = ax.bar(range(len(correlations)), correlations, color=color, alpha=0.7,
+                         edgecolor='black')
+            ax.set_xticks(range(len(correlations)))
+            ax.set_xticklabels(feature_labels, rotation=45, ha='right')
+            ax.set_ylabel('Correlation')
+            ax.set_title(method_name)
+            ax.set_ylim([-1, 1])
+            ax.axhline(y=0, color='black', linestyle='--', linewidth=0.8)
+            # Add value labels
+            for bar in bars:
+                height = bar.get_height()
+                ax.text(bar.get_x() + bar.get_width()/2., height,
+                       f'{height:.2f}',
+                       ha='center', va='bottom' if height >= 0 else 'top',
+                       fontsize=8)
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, 'correlation_with_true_importance.png'),
+                bbox_inches='tight')
+    print(f"Saved: correlation_with_true_importance.png")
+    plt.close()
+
+
+def plot_rolling_window_comparison(data, save_dir):
+    """Compare different rolling window size variants."""
+    # Check which rolling window variants are available
+    rolling_variants = []
+    for suffix, name in [('', 'Fixed (100)'), ('_max', 'Max Adaptive'), ('_mean', 'Mean Adaptive')]:
+        method_key = f'rolling_shap{suffix}'
+        if method_key in data:
+            rolling_variants.append((method_key, name))
+
+    if len(rolling_variants) < 2:
+        print("Not enough rolling window variants for comparison - skipping")
+        return
+
+    # Create comprehensive comparison
+    fig = plt.figure(figsize=(18, 12))
+    gs = fig.add_gridspec(3, 3, hspace=0.3, wspace=0.3)
+    fig.suptitle('Rolling Window Size Comparison', fontsize=16, fontweight='bold')
+
+    colors = ['#ff7f0e', '#9467bd', '#8c564b']  # Different shades for rolling variants
+
+    # 1. SHAP values over time
+    ax1 = fig.add_subplot(gs[0, :])
+    for idx, (method_key, name) in enumerate(rolling_variants):
+        df = data[method_key]
+        shap_cols = [c for c in df.columns if c.startswith('shap_lag_t')]
+        if shap_cols:
+            total_shap = df[shap_cols].sum(axis=1)
+            ax1.plot(df['end_index'], total_shap, label=f'Rolling {name}',
+                    alpha=0.7, linewidth=1.5, color=colors[idx % len(colors)])
+
+    ax1.set_xlabel('Time Index')
+    ax1.set_ylabel('Total |SHAP|')
+    ax1.set_title('Total SHAP Values Over Time')
+    ax1.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=3, frameon=False)
+    # 2. Faithfulness comparison (if available in summary)
+    if 'summary' in data:
+        summary = data['summary']
+        faith_summary = summary[summary['metric_type'] == 'faithfulness']
+
+        ax2 = fig.add_subplot(gs[1, 0])
+        methods = []
+        scores = []
+        method_colors = []
+
+        eval_key = 'prtb_p50'
+        subset = faith_summary[faith_summary['evaluation'] == eval_key]
+
+        for idx, (method_key, name) in enumerate(rolling_variants):
+            method_data = subset[subset['method'] == method_key]
+            if len(method_data) > 0:
+                methods.append(f'Rolling\n{name}')
+                scores.append(method_data['score'].values[0])
+                method_colors.append(colors[idx % len(colors)])
+
+        if methods:
+            bars = ax2.bar(range(len(methods)), scores, color=method_colors, alpha=0.7, edgecolor='black')
+            ax2.set_xticks(range(len(methods)))
+            ax2.set_xticklabels(methods, rotation=0, ha='center', fontsize=9)
+            ax2.set_ylabel('Faithfulness Score')
+            ax2.set_title('Faithfulness (PRTB P50)')
+            for bar in bars:
+                height = bar.get_height()
+                ax2.text(bar.get_x() + bar.get_width()/2., height,
+                        f'{height:.4f}', ha='center', va='bottom', fontsize=8)
+
+        # 3. Ablation comparison
+        ablation_summary = summary[summary['metric_type'] == 'ablation']
+
+        ax3 = fig.add_subplot(gs[1, 1])
+        methods = []
+        scores = []
+        method_colors = []
+
+        eval_key = 'mif_p50'
+        subset = ablation_summary[ablation_summary['evaluation'] == eval_key]
+
+        for idx, (method_key, name) in enumerate(rolling_variants):
+            method_data = subset[subset['method'] == method_key]
+            if len(method_data) > 0:
+                methods.append(f'Rolling\n{name}')
+                scores.append(method_data['score'].values[0])
+                method_colors.append(colors[idx % len(colors)])
+
+        if methods:
+            bars = ax3.bar(range(len(methods)), scores, color=method_colors, alpha=0.7, edgecolor='black')
+            ax3.set_xticks(range(len(methods)))
+            ax3.set_xticklabels(methods, rotation=0, ha='center', fontsize=9)
+            ax3.set_ylabel('Ablation Score')
+            ax3.set_title('Ablation (MIF P50)')
+            for bar in bars:
+                height = bar.get_height()
+                ax3.text(bar.get_x() + bar.get_width()/2., height,
+                        f'{height:.4f}', ha='center', va='bottom', fontsize=8)
+
+    # 4. Number of windows comparison
+    ax4 = fig.add_subplot(gs[1, 2])
+    methods = []
+    n_windows = []
+    method_colors = []
+
+    for idx, (method_key, name) in enumerate(rolling_variants):
+        df = data[method_key]
+        methods.append(f'Rolling\n{name}')
+        n_windows.append(len(df))
+        method_colors.append(colors[idx % len(colors)])
+
+    bars = ax4.bar(range(len(methods)), n_windows, color=method_colors, alpha=0.7, edgecolor='black')
+    ax4.set_xticks(range(len(methods)))
+    ax4.set_xticklabels(methods, rotation=0, ha='center', fontsize=9)
+    ax4.set_ylabel('Number of Windows')
+    ax4.set_title('Windows Computed')
+    for bar in bars:
+        height = bar.get_height()
+        ax4.text(bar.get_x() + bar.get_width()/2., height,
+                f'{int(height)}', ha='center', va='bottom', fontsize=8)
+
+    # 5-7. Prediction scatter plots (compare variants pairwise)
+    if len(rolling_variants) >= 2:
+        ax5 = fig.add_subplot(gs[2, 0])
+        method1_key, method1_name = rolling_variants[0]
+        method2_key, method2_name = rolling_variants[1]
+
+        df1 = data[method1_key]
+        df2 = data[method2_key]
+
+        merged = pd.merge(df1[['end_index', 'y_hat']],
+                         df2[['end_index', 'y_hat']],
+                         on='end_index', suffixes=('_1', '_2'))
+
+        ax5.scatter(merged['y_hat_1'], merged['y_hat_2'], alpha=0.5, s=20, color=colors[0])
+
+        lims = [np.min([ax5.get_xlim(), ax5.get_ylim()]),
+                np.max([ax5.get_xlim(), ax5.get_ylim()])]
+        ax5.plot(lims, lims, 'r--', alpha=0.75, zorder=0, linewidth=2)
+        ax5.set_aspect('equal')
+        ax5.set_xlim(lims)
+        ax5.set_ylim(lims)
+
+        corr = np.corrcoef(merged['y_hat_1'], merged['y_hat_2'])[0, 1]
+        ax5.text(0.05, 0.95, f'r = {corr:.4f}',
+                transform=ax5.transAxes, verticalalignment='top',
+                bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+
+        ax5.set_xlabel(f'{method1_name}')
+        ax5.set_ylabel(f'{method2_name}')
+        ax5.set_title(f'{method1_name} vs {method2_name}')
+    if len(rolling_variants) >= 3:
+        # Compare first and third
+        ax6 = fig.add_subplot(gs[2, 1])
+        method1_key, method1_name = rolling_variants[0]
+        method3_key, method3_name = rolling_variants[2]
+
+        df1 = data[method1_key]
+        df3 = data[method3_key]
+
+        merged = pd.merge(df1[['end_index', 'y_hat']],
+                         df3[['end_index', 'y_hat']],
+                         on='end_index', suffixes=('_1', '_3'))
+
+        ax6.scatter(merged['y_hat_1'], merged['y_hat_3'], alpha=0.5, s=20, color=colors[1])
+
+        lims = [np.min([ax6.get_xlim(), ax6.get_ylim()]),
+                np.max([ax6.get_xlim(), ax6.get_ylim()])]
+        ax6.plot(lims, lims, 'r--', alpha=0.75, zorder=0, linewidth=2)
+        ax6.set_aspect('equal')
+        ax6.set_xlim(lims)
+        ax6.set_ylim(lims)
+
+        corr = np.corrcoef(merged['y_hat_1'], merged['y_hat_3'])[0, 1]
+        ax6.text(0.05, 0.95, f'r = {corr:.4f}',
+                transform=ax6.transAxes, verticalalignment='top',
+                bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+
+        ax6.set_xlabel(f'{method1_name}')
+        ax6.set_ylabel(f'{method3_name}')
+        ax6.set_title(f'{method1_name} vs {method3_name}')
+        # Compare second and third
+        ax7 = fig.add_subplot(gs[2, 2])
+        method2_key, method2_name = rolling_variants[1]
+        method3_key, method3_name = rolling_variants[2]
+
+        df2 = data[method2_key]
+        df3 = data[method3_key]
+
+        merged = pd.merge(df2[['end_index', 'y_hat']],
+                         df3[['end_index', 'y_hat']],
+                         on='end_index', suffixes=('_2', '_3'))
+
+        ax7.scatter(merged['y_hat_2'], merged['y_hat_3'], alpha=0.5, s=20, color=colors[2])
+
+        lims = [np.min([ax7.get_xlim(), ax7.get_ylim()]),
+                np.max([ax7.get_xlim(), ax7.get_ylim()])]
+        ax7.plot(lims, lims, 'r--', alpha=0.75, zorder=0, linewidth=2)
+        ax7.set_aspect('equal')
+        ax7.set_xlim(lims)
+        ax7.set_ylim(lims)
+
+        corr = np.corrcoef(merged['y_hat_2'], merged['y_hat_3'])[0, 1]
+        ax7.text(0.05, 0.95, f'r = {corr:.4f}',
+                transform=ax7.transAxes, verticalalignment='top',
+                bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+
+        ax7.set_xlabel(f'{method2_name}')
+        ax7.set_ylabel(f'{method3_name}')
+        ax7.set_title(f'{method2_name} vs {method3_name}')
+    plt.savefig(os.path.join(save_dir, 'rolling_window_comparison.png'), bbox_inches='tight')
+    print(f"Saved: rolling_window_comparison.png")
+    plt.close()
+
+
+def plot_dataset_with_regimes(data, save_dir):
+    """Plot the raw dataset with color-coded stationarity regions."""
+    if 'config' not in data:
+        print("No config available - skipping dataset plot")
+        return
+
+    # Load the dataset
+    dataset_path = data['config'].get('dataset', '')
+    if not os.path.exists(dataset_path):
+        print(f"Dataset not found: {dataset_path}")
+        return
+
+    df_data = pd.read_csv(dataset_path)
+
+    # Detect regime changes from true importances
+    change_points = []
+    if 'true_importances' in data:
+        true_imp_df = data['true_importances']
+        imp_cols = [c for c in true_imp_df.columns if c.startswith('true_imp_')]
+
+        if len(imp_cols) > 0:
+            # Detect changes by looking at differences in importance patterns
+            for i in range(1, len(true_imp_df)):
+                # Calculate L2 distance between consecutive importance vectors
+                prev = true_imp_df.iloc[i-1][imp_cols].values
+                curr = true_imp_df.iloc[i][imp_cols].values
+                distance = np.sqrt(np.sum((curr - prev)**2))
+
+                # If distance is large, it's a change point
+                if distance > 0.01:  # threshold for detecting change
+                    change_points.append(i)
+
+    # Define colors for regimes (user specified)
+    regime_colors = ['#4A74AA', '#D84835', '#49792F']
+
+    # Create figure with subplots for target and each covariate
+    n_covariates = len([c for c in df_data.columns if c.startswith('Z_')])
+    n_plots = 1 + n_covariates  # target + covariates
+
+    fig, axes = plt.subplots(n_plots, 1, figsize=(16, 3 * n_plots))
+    if n_plots == 1:
+        axes = [axes]
+
+    fig.suptitle('Dataset with Color-Coded Stationarity Regions',
+                 fontsize=14, fontweight='bold')
+
+    # Add 0 and T as boundaries
+    boundaries = [0] + change_points + [len(df_data)]
+    n_regimes = len(boundaries) - 1
+
+    # Plot target variable
+    ax = axes[0]
+    target = df_data['N'].values
+    time_index = np.arange(len(target))
+
+    for regime_idx in range(n_regimes):
+        start = boundaries[regime_idx]
+        end = boundaries[regime_idx + 1]
+        color = regime_colors[regime_idx % len(regime_colors)]
+
+        ax.plot(time_index[start:end], target[start:end],
+               color=color, linewidth=1.5, alpha=0.8,
+               label=f'Regime {regime_idx + 1}' if regime_idx == 0 else '')
+
+    # Mark change points with vertical lines
+    for cp in change_points:
+        ax.axvline(x=cp, color='black', linestyle='--', linewidth=1.5, alpha=0.5)
+
+    ax.set_xlabel('Time Index')
+    ax.set_ylabel('Target (N)')
+    ax.set_title('Target Variable')
+    ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=3, frameon=False)
+
+    # Plot covariates
+    for cov_idx in range(n_covariates):
+        ax = axes[cov_idx + 1]
+        col_name = f'Z_{cov_idx}'
+
+        if col_name not in df_data.columns:
+            continue
+
+        covariate = df_data[col_name].values
+
+        for regime_idx in range(n_regimes):
+            start = boundaries[regime_idx]
+            end = boundaries[regime_idx + 1]
+            color = regime_colors[regime_idx % len(regime_colors)]
+
+            ax.plot(time_index[start:end], covariate[start:end],
+                   color=color, linewidth=1.5, alpha=0.8)
+
+        # Mark change points
+        for cp in change_points:
+            ax.axvline(x=cp, color='black', linestyle='--', linewidth=1.5, alpha=0.5)
+
+        ax.set_xlabel('Time Index')
+        ax.set_ylabel(f'Covariate {col_name}')
+        ax.set_title(f'Covariate {col_name}')
+    # Add regime information as text
+    info_text = f"Detected {n_regimes} regimes"
+    if change_points:
+        info_text += f" with change points at: {', '.join(map(str, change_points))}"
+    fig.text(0.5, 0.02, info_text, ha='center', fontsize=10,
+             bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+
+    plt.tight_layout(rect=[0, 0.03, 1, 0.98])
+    plt.savefig(os.path.join(save_dir, 'dataset_with_regimes.png'), bbox_inches='tight')
+    print(f"Saved: dataset_with_regimes.png")
+    plt.close()
+
+
+def plot_residual_analysis(data, save_dir):
+    """Analyze prediction residuals comparing each method against y_true."""
+    # Check if y_true is available in at least one method
+    has_y_true = False
+    for method_key in ['global_shap', 'rolling_shap', 'rolling_shap_max', 'rolling_shap_mean', 'adaptive_shap']:
+        if method_key in data and 'y_true' in data[method_key].columns:
+            has_y_true = True
+            break
+
+    if not has_y_true:
+        print("No y_true data available - skipping residual analysis")
+        return
+
+    # Define methods with colors
+    methods = [
+        ('global_shap', 'Vanilla SHAP', '#1f77b4'),
+        ('rolling_shap', 'Rolling (Fixed 100)', '#ff7f0e'),
+        ('rolling_shap_max', 'Rolling (Max)', '#9467bd'),
+        ('rolling_shap_mean', 'Rolling (Mean)', '#8c564b'),
+        ('adaptive_shap', 'Adaptive SHAP', '#2ca02c')
+    ]
+
+    # Filter to only available methods with y_true
+    available_methods = [(k, n, c) for k, n, c in methods
+                        if k in data and 'y_true' in data[k].columns and 'y_hat' in data[k].columns]
+
+    if len(available_methods) == 0:
+        print("No methods with both y_true and y_hat - skipping residual analysis")
+        return
+
+    n_methods = len(available_methods)
+
+    # Create comprehensive residual analysis figure
+    fig = plt.figure(figsize=(18, 12))
+    gs = fig.add_gridspec(3, n_methods, hspace=0.3, wspace=0.3)
+    fig.suptitle('Residual Analysis: Predictions vs Ground Truth', fontsize=16, fontweight='bold')
+
+    # Row 1: Residuals over time
+    for idx, (method_key, method_name, color) in enumerate(available_methods):
+        ax = fig.add_subplot(gs[0, idx])
+        df = data[method_key]
+
+        residuals = df['y_true'] - df['y_hat']
+
+        ax.plot(df['end_index'], residuals, alpha=0.6, linewidth=1, color=color)
+        ax.axhline(y=0, color='red', linestyle='--', linewidth=1.5, alpha=0.7)
+        ax.set_xlabel('Time Index')
+        ax.set_ylabel('Residual (y_true - y_hat)')
+        ax.set_title(f'{method_name}\nResiduals Over Time')
+        # Add RMSE as text
+        rmse = np.sqrt(np.mean(residuals**2))
+        mae = np.mean(np.abs(residuals))
+        ax.text(0.05, 0.95, f'RMSE: {rmse:.4f}\nMAE: {mae:.4f}',
+               transform=ax.transAxes, verticalalignment='top',
+               bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.7),
+               fontsize=9)
+
+    # Row 2: Residual distributions
+    for idx, (method_key, method_name, color) in enumerate(available_methods):
+        ax = fig.add_subplot(gs[1, idx])
+        df = data[method_key]
+
+        residuals = df['y_true'] - df['y_hat']
+
+        ax.hist(residuals, bins=50, alpha=0.7, edgecolor='black', color=color)
+        ax.axvline(x=0, color='red', linestyle='--', linewidth=1.5)
+        ax.axvline(x=np.mean(residuals), color='blue', linestyle='--',
+                  linewidth=1.5, label=f'Mean: {np.mean(residuals):.4f}')
+        ax.set_xlabel('Residual (y_true - y_hat)')
+        ax.set_ylabel('Frequency')
+        ax.set_title(f'{method_name}\nResidual Distribution')
+        ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=3, frameon=False)
+    # Row 3: Predictions vs y_true scatter plots
+    for idx, (method_key, method_name, color) in enumerate(available_methods):
+        ax = fig.add_subplot(gs[2, idx])
+        df = data[method_key]
+
+        ax.scatter(df['y_true'], df['y_hat'], alpha=0.5, s=20, color=color)
+
+        # Add diagonal line (perfect predictions)
+        lims = [
+            np.min([ax.get_xlim(), ax.get_ylim()]),
+            np.max([ax.get_xlim(), ax.get_ylim()])
+        ]
+        ax.plot(lims, lims, 'r--', alpha=0.75, zorder=0, linewidth=2, label='Perfect Prediction')
+        ax.set_aspect('equal')
+        ax.set_xlim(lims)
+        ax.set_ylim(lims)
+
+        # Calculate metrics
+        corr = np.corrcoef(df['y_true'], df['y_hat'])[0, 1]
+        r2 = 1 - np.sum((df['y_true'] - df['y_hat'])**2) / np.sum((df['y_true'] - np.mean(df['y_true']))**2)
+
+        ax.text(0.05, 0.95, f'r = {corr:.4f}\nR² = {r2:.4f}',
+               transform=ax.transAxes, verticalalignment='top',
+               bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.7),
+               fontsize=9)
+
+        ax.set_xlabel('y_true')
+        ax.set_ylabel('y_hat')
+        ax.set_title(f'{method_name}\nPredictions vs Truth')
+        ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=3, frameon=False, fontsize=8)
+
+    plt.savefig(os.path.join(save_dir, 'residual_analysis.png'), bbox_inches='tight')
+    print(f"Saved: residual_analysis.png")
+    plt.close()
+
+
 def main():
     """Main visualization function."""
-    # ============================================================
-    # CHOOSE DATASET TYPE: 'simulated' or 'empirical'
-    # ============================================================
-    RUN_TYPE = "empirical"  # Change to "empirical" for empirical data
+    import argparse
 
-    if RUN_TYPE == "simulated":
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(description='Visualize SHAP benchmark results')
+    parser.add_argument('--dataset', type=str, default='piecewise_ar3',
+                        help='Dataset name (default: piecewise_ar3)')
+    parser.add_argument('--data-type', type=str, default='simulated',
+                        choices=['simulated', 'empirical'],
+                        help='Dataset type (default: simulated)')
+    args = parser.parse_args()
+
+    if args.data_type == "simulated":
         # Simulated dataset results directory
-        dataset_type = "ar"
-        order = "3"
-        results_dir = f'examples/results/benchmark_{dataset_type}_{order}'
-    elif RUN_TYPE == "empirical":
+        results_dir = f'examples/results/benchmark_{args.dataset}'
+    elif args.data_type == "empirical":
         # Empirical dataset results directory
         results_dir = 'examples/results/benchmark_empirical'
-    else:
-        raise ValueError(f"Invalid RUN_TYPE: {RUN_TYPE}. Must be 'simulated' or 'empirical'")
 
     save_dir = os.path.join(results_dir, 'figures')
 
@@ -801,7 +1574,8 @@ def main():
     os.makedirs(save_dir, exist_ok=True)
 
     print("="*60)
-    print(f"Benchmark Visualization - {RUN_TYPE.title()} Data")
+    print(f"Benchmark Visualization - {args.data_type.title()} Data")
+    print(f"Dataset: {args.dataset if args.data_type == 'simulated' else 'Empirical'}")
     print("="*60)
     print(f"Loading data from: {results_dir}")
 
@@ -814,6 +1588,12 @@ def main():
 
     # Generate plots
     print("\nGenerating visualizations...")
+
+    # Plot dataset first
+    try:
+        plot_dataset_with_regimes(data, save_dir)
+    except Exception as e:
+        print(f"Error in dataset visualization: {e}")
 
     try:
         plot_faithfulness_comparison(data, save_dir)
@@ -864,6 +1644,32 @@ def main():
         create_summary_dashboard(data, save_dir)
     except Exception as e:
         print(f"Error in summary dashboard: {e}")
+
+    # True importance visualizations (if available)
+    try:
+        plot_true_importance_heatmap(data, save_dir)
+    except Exception as e:
+        print(f"Error in true importance heatmap: {e}")
+
+    try:
+        plot_shap_vs_true_importance_heatmaps(data, save_dir)
+    except Exception as e:
+        print(f"Error in SHAP vs true importance heatmaps: {e}")
+
+    try:
+        plot_correlation_with_true_importance(data, save_dir)
+    except Exception as e:
+        print(f"Error in correlation with true importance: {e}")
+
+    try:
+        plot_rolling_window_comparison(data, save_dir)
+    except Exception as e:
+        print(f"Error in rolling window comparison: {e}")
+
+    try:
+        plot_residual_analysis(data, save_dir)
+    except Exception as e:
+        print(f"Error in residual analysis: {e}")
 
     print("\n" + "="*60)
     print("Visualization Complete!")

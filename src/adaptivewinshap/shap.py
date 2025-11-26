@@ -40,7 +40,7 @@ class LSTMRegressor(nn.Module):
         return yhat.squeeze(-1)           # [B]
 
     def predict(self, x):
-        """Prediction method compatible with faithfulness computation."""
+        """Prediction method compatible with faithfulness computation and SHAP."""
         self.eval()
         with torch.no_grad():
             if isinstance(x, np.ndarray):
@@ -51,8 +51,22 @@ class LSTMRegressor(nn.Module):
             x = x.to(device)
 
             # Handle both 2D and 3D inputs
+            # If 2D, check if it needs reshaping for multivariate case
             if x.dim() == 2:
-                x = x.unsqueeze(-1)  # [N, seq_len] -> [N, seq_len, 1]
+                n_samples = x.shape[0]
+                total_features = x.shape[1]
+
+                # Get input_size from the LSTM layer
+                input_size = self.lstm.input_size
+
+                # If it's flattened from SHAP: [N, seq_len * input_size]
+                # Need to reshape to [N, seq_len, input_size]
+                if total_features % input_size == 0 and total_features != input_size:
+                    seq_len = total_features // input_size
+                    x = x.reshape(n_samples, seq_len, input_size)
+                # Otherwise if univariate, expand: [N, seq_len] -> [N, seq_len, 1]
+                elif input_size == 1:
+                    x = x.unsqueeze(-1)
 
             preds = self.forward(x)
             return preds.cpu().numpy().reshape(-1, 1)
@@ -367,15 +381,25 @@ class AdaptiveWinShap:
             row = {
                 "end_index": int(end_idx),
                 "window_len": int(window.shape[0]),
+                "y_true": float(arr[end_idx, 0]) if arr.ndim == 2 else float(arr[end_idx]),
                 "y_hat": float(out["y_hat"]),
             }
 
             L, F = out["shap_full"].shape
 
             if self.aggregate_lag:
-                # name: shap_lstm_t-1, shap_lstm_t-2, ...
+                # For multivariate: separate lag SHAP (feature 0) from covariate SHAP (features 1+)
+                # Lag SHAP: report per-timestep for feature 0
                 for lag in range(1, L + 1):
-                    row[f"shap_lstm_t-{lag}"] = float(out["shap_lag"][L - lag])  # t-1 is last row
+                    lag_idx = L - lag  # t-1 is last row (index L-1)
+                    row[f"shap_lag_t-{lag}"] = float(np.abs(out["shap_full"][lag_idx, 0]))
+
+                # Covariate SHAP: sum across timesteps for features 1+
+                if F > 1:
+                    cov_shap = np.abs(out["shap_full"][:, 1:])  # [L, n_cov]
+                    cov_shap_sum = cov_shap.sum(axis=0)  # [n_cov]
+                    for cov_idx in range(F - 1):
+                        row[f"shap_Z_{cov_idx}"] = float(cov_shap_sum[cov_idx])
             else:
                 # export full matrix
                 for l in range(L):
@@ -422,6 +446,6 @@ class AdaptiveWinShap:
         df = pd.DataFrame(records).sort_values("end_index").reset_index(drop=True)
         if not return_full and self.aggregate_lag:
             # keep summary columns only
-            keep = ["end_index", "window_len", "y_hat"] + [c for c in df.columns if c.startswith("shap_lstm_t-")]
+            keep = ["end_index", "window_len", "y_hat"] + [c for c in df.columns if c.startswith("shap_lag_t-") or c.startswith("shap_Z_")]
             return df[keep]
         return df

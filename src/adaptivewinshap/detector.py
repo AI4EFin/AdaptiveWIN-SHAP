@@ -60,12 +60,14 @@ class ChangeDetector:
         Returns DataFrame with diagnostics per step.
         Uses OOS MSE and **per-batch weighted retraining** in bootstrap if enabled.
         """
-        DT_N = pd.DataFrame({"Date": np.arange(len(self.data)), "N": self.data})
+        # Extract target (first column if 2D, or the whole array if 1D)
+        target_data = self.data[:, 0] if self.data.ndim == 2 else self.data
+        DT_N = pd.DataFrame({"Date": np.arange(len(self.data)), "N": target_data})
         windows, mse_vals, rmse_vals, likelihoods, scaled_windows = [], [], [], [], []
         x_axis = np.arange(len(self.data), dtype=float)  # absolute index as x
         if debug_anim:
             animator = SlidingWindowAnimator(
-                x_axis, np.asarray(self.data, dtype=float),
+                x_axis, np.asarray(target_data, dtype=float),
                 title="Adaptive WIN-SHAP",
                 pause=pause, record=True
             )
