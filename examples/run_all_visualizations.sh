@@ -13,8 +13,8 @@ datasets=(
     "trend_season"
     "spike_process"
     "tvp_arx"
-    #"garch_regime"
-    #"cointegration"
+    "garch_regime"
+    "cointegration"
 )
 
 # Track results

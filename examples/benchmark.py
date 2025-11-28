@@ -93,7 +93,8 @@ def run_benchmark(dataset_path, output_dir, device='cpu', verbose=True,
                   dataset_type='simulated', column_name='N', date_start=None, date_end=None,
                   seq_length=3, hidden_size=16, num_layers=1, dropout=0.0, epochs=15,
                   batch_size=64, lr=1e-2, max_background=100, shap_nsamples=500,
-                  rolling_window_size=100, rolling_stride=1, precomputed_windows_path=None):
+                  rolling_window_size=100, rolling_stride=1, precomputed_windows_path=None,
+                  rolling_mean_window=75):
     """
     Run comprehensive benchmark comparing different SHAP methods.
 
@@ -358,8 +359,7 @@ def run_benchmark(dataset_path, output_dir, device='cpu', verbose=True,
             print("Method 3b: Adaptive SHAP (Rolling Mean of Adaptive Windows)")
             print("="*60)
 
-        # Compute rolling mean of adaptive window sizes with window=N0
-        rolling_mean_window = 75  # Based on N0 parameter
+        # Use the rolling_mean_window parameter passed to the function
 
         if 'window_mean' in detection_df.columns:
             window_series = detection_df['window_mean']
@@ -527,6 +527,7 @@ def run_benchmark(dataset_path, output_dir, device='cpu', verbose=True,
         'shap_nsamples': SHAP_NSAMPLES,
         'rolling_window_size': ROLLING_WINDOW_SIZE,
         'rolling_stride': ROLLING_STRIDE,
+        'rolling_mean_window': rolling_mean_window,
         'device': device
     }
 
@@ -550,6 +551,8 @@ if __name__ == "__main__":
                         help='N0 value used in window detection (default: 75)')
     parser.add_argument('--jump', type=int, default=1,
                         help='Jump value used in window detection (default: 1)')
+    parser.add_argument('--rolling-mean-window', type=int, default=75,
+                        help='Window size for rolling mean smoothing of adaptive windows (default: 75)')
     args = parser.parse_args()
 
     # Configuration
@@ -630,7 +633,8 @@ if __name__ == "__main__":
             shap_nsamples=SHAP_NSAMPLES,
             rolling_window_size=ROLLING_WINDOW_SIZE,
             rolling_stride=ROLLING_STRIDE,
-            precomputed_windows_path=PRECOMPUTED_WINDOWS
+            precomputed_windows_path=PRECOMPUTED_WINDOWS,
+            rolling_mean_window=args.rolling_mean_window
         )
 
     elif args.data_type == "empirical":
@@ -691,7 +695,8 @@ if __name__ == "__main__":
             shap_nsamples=SHAP_NSAMPLES,
             rolling_window_size=ROLLING_WINDOW_SIZE,
             rolling_stride=ROLLING_STRIDE,
-            precomputed_windows_path=PRECOMPUTED_WINDOWS
+            precomputed_windows_path=PRECOMPUTED_WINDOWS,
+            rolling_mean_window=args.rolling_mean_window
         )
 
     print("\n" + "="*60)

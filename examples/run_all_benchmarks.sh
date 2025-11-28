@@ -20,6 +20,7 @@ datasets=(
 # Configuration (matching run_all_simulations.sh)
 N0=75
 JUMP=1
+ROLLING_MEAN_WINDOW=10
 
 # Track results
 declare -a results
@@ -35,7 +36,8 @@ for dataset in "${datasets[@]}"; do
         --dataset "$dataset" \
         --data-type simulated \
         --n0 $N0 \
-        --jump $JUMP
+        --jump $JUMP \
+        --rolling-mean-window $ROLLING_MEAN_WINDOW
 
     if [ $? -eq 0 ]; then
         results+=("$dataset : SUCCESS")

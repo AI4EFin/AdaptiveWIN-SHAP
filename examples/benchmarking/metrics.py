@@ -171,10 +171,8 @@ def compute_point_faithfulness(model, shap_values, input_sequence,
         input_sequence = input_sequence[0:1, :, :]
 
     # Flatten SHAP values if needed [seq_len, features] -> [seq_len * features]
-    if shap_values.ndim == 2:
-        shap_flat = np.abs(shap_values).flatten()
-    else:
-        shap_flat = np.abs(shap_values)
+    # Ensure it's always at least 1D (handles scalar case for seq_length=1)
+    shap_flat = np.abs(np.atleast_1d(shap_values)).flatten()
 
     # Get original prediction
     original_pred = model.predict(input_sequence)
@@ -266,10 +264,8 @@ def compute_point_ablation(model, shap_values, input_sequence,
         input_sequence = input_sequence[0:1, :, :]
 
     # Flatten SHAP values if needed [seq_len, features] -> [seq_len * features]
-    if shap_values.ndim == 2:
-        shap_flat = np.abs(shap_values).flatten()
-    else:
-        shap_flat = np.abs(shap_values)
+    # Ensure it's always at least 1D (handles scalar case for seq_length=1)
+    shap_flat = np.abs(np.atleast_1d(shap_values)).flatten()
 
     # Get original prediction
     original_pred = model.predict(input_sequence)

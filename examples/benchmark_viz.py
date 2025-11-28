@@ -273,7 +273,7 @@ def plot_ablation_mif_vs_lif(data, save_dir):
         print("No ablation metrics found - skipping MIF vs LIF comparison")
         return
 
-    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+    fig, axes = plt.subplots(1, 3, figsize=(20, 6))
     fig.suptitle('MIF vs LIF Ablation Comparison (Higher MIF/LIF ratio = Better)',
                  fontsize=14, fontweight='bold')
 
@@ -287,6 +287,10 @@ def plot_ablation_mif_vs_lif(data, save_dir):
         'adaptive_shap_rolling_mean': '#d62728'
     }
 
+    # Define method order (all methods)
+    method_order = ['global_shap', 'rolling_shap', 'rolling_shap_max', 'rolling_shap_mean',
+                    'adaptive_shap', 'adaptive_shap_rolling_mean']
+
     for j, percentile in enumerate(percentiles):
         ax = axes[j]
 
@@ -295,7 +299,7 @@ def plot_ablation_mif_vs_lif(data, save_dir):
         lif_scores = []
         colors = []
 
-        for method in ['global_shap', 'rolling_shap', 'adaptive_shap']:
+        for method in method_order:
             # Get MIF score
             mif_key = f'mif_{percentile}'
             mif_data = ablation_summary[(ablation_summary['method'] == method) &
@@ -307,7 +311,17 @@ def plot_ablation_mif_vs_lif(data, save_dir):
                                         (ablation_summary['evaluation'] == lif_key)]
 
             if len(mif_data) > 0 and len(lif_data) > 0:
-                methods.append(method.replace('_', ' ').title())
+                # Format method name for display
+                if method == 'rolling_shap_max':
+                    display_name = 'Rolling (Max)'
+                elif method == 'rolling_shap_mean':
+                    display_name = 'Rolling (Mean)'
+                elif method == 'adaptive_shap_rolling_mean':
+                    display_name = 'Adaptive (Smooth)'
+                else:
+                    display_name = method.replace('_', ' ').title()
+
+                methods.append(display_name)
                 mif_scores.append(mif_data['score'].values[0])
                 lif_scores.append(lif_data['score'].values[0])
                 colors.append(color_map.get(method, '#888888'))
@@ -325,8 +339,8 @@ def plot_ablation_mif_vs_lif(data, save_dir):
             ax.set_ylabel('Ablation Score')
             ax.set_title(f'Percentile: {percentile.upper()}')
             ax.set_xticks(x)
-            ax.set_xticklabels(methods, rotation=45, ha='right')
-            ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=3, frameon=False)
+            ax.set_xticklabels(methods, rotation=45, ha='right', fontsize=8)
+            ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.25), ncol=2, frameon=False)
             # Add value labels
             for bar in bars1:
                 height = bar.get_height()
@@ -390,18 +404,35 @@ def plot_shap_heatmaps(data, save_dir):
     """Create heatmaps of SHAP values for each method."""
     methods = [
         ('global_shap', 'Vanilla SHAP', 'shap_lag_t'),
-        ('rolling_shap', 'Rolling Window SHAP', 'shap_lag_t'),
-        ('adaptive_shap', 'Adaptive SHAP', 'shap_lag_t')
+        ('rolling_shap', 'Rolling (Fixed 100)', 'shap_lag_t'),
+        ('rolling_shap_max', 'Rolling (Max)', 'shap_lag_t'),
+        ('rolling_shap_mean', 'Rolling (Mean)', 'shap_lag_t'),
+        ('adaptive_shap', 'Adaptive SHAP', 'shap_lag_t'),
+        ('adaptive_shap_rolling_mean', 'Adaptive (Smooth)', 'shap_lag_t')
     ]
 
-    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+    # Filter to only available methods
+    available_methods = [(k, n, p) for k, n, p in methods if k in data]
+    n_methods = len(available_methods)
+
+    if n_methods == 0:
+        print("No methods available for heatmap plotting")
+        return
+
+    # Calculate grid dimensions
+    n_cols = 3
+    n_rows = (n_methods + n_cols - 1) // n_cols  # Ceiling division
+
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(18, 5 * n_rows))
     fig.suptitle('SHAP Value Heatmaps (Time × Lags)', fontsize=14, fontweight='bold')
 
-    for idx, (method_key, method_name, shap_prefix) in enumerate(methods):
-        if method_key not in data:
-            continue
+    # Flatten axes array for easier indexing
+    if n_rows == 1:
+        axes = axes.reshape(1, -1)
+    axes_flat = axes.flatten()
 
-        ax = axes[idx]
+    for idx, (method_key, method_name, shap_prefix) in enumerate(available_methods):
+        ax = axes_flat[idx]
         df = data[method_key]
 
         # Get SHAP columns
@@ -446,6 +477,10 @@ def plot_shap_heatmaps(data, save_dir):
 
         # Add colorbar
         plt.colorbar(im, ax=ax, label='|SHAP Value|')
+
+    # Hide any unused subplots
+    for idx in range(n_methods, len(axes_flat)):
+        axes_flat[idx].set_visible(False)
 
     plt.tight_layout()
     plt.savefig(os.path.join(save_dir, 'shap_heatmaps.png'), bbox_inches='tight')
@@ -581,6 +616,9 @@ def plot_temporal_faithfulness(data, save_dir):
     eval_types = ['prtb', 'sqnc']
     percentiles = ['p90', 'p70', 'p50']
 
+    # Store handles and labels for shared legend
+    handles, labels = None, None
+
     for i, eval_type in enumerate(eval_types):
         for j, percentile in enumerate(percentiles):
             ax = axes[i, j]
@@ -590,29 +628,40 @@ def plot_temporal_faithfulness(data, save_dir):
 
             # Plot for each method
             for method_key, label, color in [
-                ('global_shap', 'Global', '#1f77b4'),
-                ('rolling_shap', 'Rolling', '#ff7f0e'),
-                ('adaptive_shap', 'Adaptive', '#2ca02c')
+                ('global_shap', 'Vanilla', '#1f77b4'),
+                ('rolling_shap', 'Rolling (100)', '#ff7f0e'),
+                ('rolling_shap_max', 'Rolling (Max)', '#9467bd'),
+                ('rolling_shap_mean', 'Rolling (Mean)', '#8c564b'),
+                ('adaptive_shap', 'Adaptive', '#2ca02c'),
+                ('adaptive_shap_rolling_mean', 'Adaptive (Smooth)', '#d62728')
             ]:
                 if method_key in data:
                     df = data[method_key]
                     if col_name in df.columns:
-                        # Plot with transparency and smoothing
-                        ax.plot(df['end_index'], df[col_name], label=label,
-                               alpha=0.6, linewidth=1.5, color=color)
+                        # Plot rolling mean only (window=20)
+                        rolling_mean = df[col_name].rolling(window=20, center=True).mean()
+                        line, = ax.plot(df['end_index'], rolling_mean,
+                                       linewidth=2, color=color, alpha=0.8, label=label)
 
-                        # Add rolling mean for trend
-                        if len(df) > 20:
-                            window = min(50, len(df) // 10)
-                            rolling_mean = df[col_name].rolling(window=window, center=True).mean()
-                            ax.plot(df['end_index'], rolling_mean,
-                                   linestyle='--', linewidth=2, color=color, alpha=0.8, label=label)
+                        # Capture handles and labels from first subplot
+                        if i == 0 and j == 0:
+                            if handles is None:
+                                handles = []
+                                labels = []
+                            handles.append(line)
+                            labels.append(label)
 
             ax.set_xlabel('Time Index')
             ax.set_ylabel('Faithfulness Score')
             ax.set_title(f'{eval_type.upper()} - {percentile.upper()}')
-            ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=3, frameon=False)
+
+    # Add single legend at the bottom of the figure
+    if handles is not None:
+        fig.legend(handles, labels, loc='lower center', ncol=6,
+                  bbox_to_anchor=(0.5, -0.02), frameon=False, fontsize=10)
+
     plt.tight_layout()
+    plt.subplots_adjust(bottom=0.08)  # Make room for legend
     plt.savefig(os.path.join(save_dir, 'temporal_faithfulness.png'), bbox_inches='tight')
     print(f"Saved: temporal_faithfulness.png")
     plt.close()
@@ -626,6 +675,9 @@ def plot_temporal_ablation(data, save_dir):
     ablation_types = ['mif', 'lif']
     percentiles = ['p90', 'p70', 'p50']
 
+    # Store handles and labels for shared legend
+    handles, labels = None, None
+
     for i, ablation_type in enumerate(ablation_types):
         for j, percentile in enumerate(percentiles):
             ax = axes[i, j]
@@ -635,29 +687,40 @@ def plot_temporal_ablation(data, save_dir):
 
             # Plot for each method
             for method_key, label, color in [
-                ('global_shap', 'Global', '#1f77b4'),
-                ('rolling_shap', 'Rolling', '#ff7f0e'),
-                ('adaptive_shap', 'Adaptive', '#2ca02c')
+                ('global_shap', 'Vanilla', '#1f77b4'),
+                ('rolling_shap', 'Rolling (100)', '#ff7f0e'),
+                ('rolling_shap_max', 'Rolling (Max)', '#9467bd'),
+                ('rolling_shap_mean', 'Rolling (Mean)', '#8c564b'),
+                ('adaptive_shap', 'Adaptive', '#2ca02c'),
+                ('adaptive_shap_rolling_mean', 'Adaptive (Smooth)', '#d62728')
             ]:
                 if method_key in data:
                     df = data[method_key]
                     if col_name in df.columns:
-                        # Plot with transparency and smoothing
-                        ax.plot(df['end_index'], df[col_name], label=label,
-                               alpha=0.6, linewidth=1.5, color=color)
+                        # Plot rolling mean only (window=20)
+                        rolling_mean = df[col_name].rolling(window=20, center=True).mean()
+                        line, = ax.plot(df['end_index'], rolling_mean,
+                                       linewidth=2, color=color, alpha=0.8, label=label)
 
-                        # Add rolling mean for trend
-                        if len(df) > 20:
-                            window = min(50, len(df) // 10)
-                            rolling_mean = df[col_name].rolling(window=window, center=True).mean()
-                            ax.plot(df['end_index'], rolling_mean,
-                                   linestyle='--', linewidth=2, color=color, alpha=0.8)
+                        # Capture handles and labels from first subplot
+                        if i == 0 and j == 0:
+                            if handles is None:
+                                handles = []
+                                labels = []
+                            handles.append(line)
+                            labels.append(label)
 
             ax.set_xlabel('Time Index')
             ax.set_ylabel('Ablation Score')
             ax.set_title(f'{ablation_type.upper()} - {percentile.upper()}')
-            ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=3, frameon=False)
+
+    # Add single legend at the bottom of the figure
+    if handles is not None:
+        fig.legend(handles, labels, loc='lower center', ncol=6,
+                  bbox_to_anchor=(0.5, -0.02), frameon=False, fontsize=10)
+
     plt.tight_layout()
+    plt.subplots_adjust(bottom=0.08)  # Make room for legend
     plt.savefig(os.path.join(save_dir, 'temporal_ablation.png'), bbox_inches='tight')
     print(f"Saved: temporal_ablation.png")
     plt.close()
@@ -855,15 +918,33 @@ def plot_true_importance_heatmap(data, save_dir):
     # Create heatmap data
     true_imp_matrix = true_imp_df[imp_cols].values.T
 
+    # Pad true importances to match SHAP feature count if needed
+    # Get number of SHAP features from any available method
+    n_shap_features = 0
+    for method_key in ['global_shap', 'rolling_shap', 'adaptive_shap']:
+        if method_key in data:
+            df = data[method_key]
+            shap_cols = [c for c in df.columns if c.startswith('shap_') and
+                        ('t-' in c or '_Z' in c or 'lag' in c or 'lstm' in c)]
+            n_shap_features = len(shap_cols)
+            break
+
+    n_true_features = len(imp_cols)
+    if n_shap_features > 0 and n_true_features < n_shap_features:
+        # Pad with zeros at the beginning (for lag features)
+        n_missing = n_shap_features - n_true_features
+        padding = np.zeros((n_missing, true_imp_matrix.shape[1]))
+        true_imp_matrix = np.vstack([padding, true_imp_matrix])
+
     # Plot heatmap with a diverging colormap
     im = ax.imshow(true_imp_matrix, aspect='auto', cmap='RdYlGn', interpolation='nearest')
     ax.set_xlabel('Time Index (every 100th shown)')
     ax.set_ylabel('Feature')
     ax.set_title('True Feature Importances (Ground Truth)')
 
-    # Set y-axis labels (feature names)
-    ax.set_yticks(range(len(imp_cols)))
-    feature_names = [f'Feature {i}' for i in range(len(imp_cols))]
+    # Set y-axis labels (feature names, matching padded size)
+    ax.set_yticks(range(true_imp_matrix.shape[0]))
+    feature_names = [f'Feature {i}' for i in range(true_imp_matrix.shape[0])]
     ax.set_yticklabels(feature_names)
 
     # Set x-axis labels (show every 100th index)
@@ -898,7 +979,8 @@ def plot_shap_vs_true_importance_heatmaps(data, save_dir):
         ('rolling_shap', 'Rolling (Fixed 100)'),
         ('rolling_shap_max', 'Rolling (Max)'),
         ('rolling_shap_mean', 'Rolling (Mean)'),
-        ('adaptive_shap', 'Adaptive SHAP')
+        ('adaptive_shap', 'Adaptive SHAP'),
+        ('adaptive_shap_rolling_mean', 'Adaptive SHAP (Smooth)')
     ]
 
     for method_key, method_name in methods:
@@ -958,8 +1040,8 @@ def plot_shap_vs_true_importance_heatmaps(data, save_dir):
         ax = axes[0]
         shap_matrix = df[shap_cols].values.T
 
-        # Normalize SHAP values row-wise for better comparison
-        shap_matrix_norm = shap_matrix / (shap_matrix.sum(axis=0, keepdims=True) + 1e-10)
+        # Normalize SHAP values row-wise for better comparison (using absolute values)
+        shap_matrix_norm = np.abs(shap_matrix) / (np.abs(shap_matrix).sum(axis=0, keepdims=True) + 1e-10)
 
         im1 = ax.imshow(shap_matrix_norm, aspect='auto', cmap='RdYlGn', interpolation='nearest',
                        vmin=0, vmax=1)
@@ -989,10 +1071,24 @@ def plot_shap_vs_true_importance_heatmaps(data, save_dir):
             end_indices = df['end_index'].values.astype(int)
             # Ensure indices are within bounds
             end_indices = np.clip(end_indices, 0, len(true_imp_df) - 1)
-            true_imp_aligned = true_imp_df.iloc[end_indices][imp_cols[:len(shap_cols)]].values.T
+            true_imp_sampled = true_imp_df.iloc[end_indices][imp_cols].values
         else:
             # If no end_index, just take first N rows
-            true_imp_aligned = true_imp_df[imp_cols[:len(shap_cols)]].iloc[:len(df)].values.T
+            true_imp_sampled = true_imp_df[imp_cols].iloc[:len(df)].values
+
+        # Handle mismatch: if SHAP has more features than true importances (e.g., includes lags)
+        # Pad with zeros for missing lag features (lags come first in SHAP feature order)
+        n_shap_features = len(shap_cols)
+        n_true_features = len(imp_cols)
+
+        if n_true_features < n_shap_features:
+            # Number of missing features (assumed to be lags)
+            n_missing = n_shap_features - n_true_features
+            # Pad with zeros at the beginning (for lag features)
+            padding = np.zeros((len(true_imp_sampled), n_missing))
+            true_imp_sampled = np.hstack([padding, true_imp_sampled])
+
+        true_imp_aligned = true_imp_sampled.T
 
         im2 = ax.imshow(true_imp_aligned, aspect='auto', cmap='RdYlGn', interpolation='nearest',
                        vmin=0, vmax=1)
@@ -1035,16 +1131,17 @@ def plot_correlation_with_true_importance(data, save_dir):
         ('rolling_shap', 'Rolling (Fixed 100)', 'shap_lag_t', '#ff7f0e'),
         ('rolling_shap_max', 'Rolling (Max)', 'shap_lag_t', '#9467bd'),
         ('rolling_shap_mean', 'Rolling (Mean)', 'shap_lag_t', '#8c564b'),
-        ('adaptive_shap', 'Adaptive SHAP', 'shap_lag_t', '#2ca02c')
+        ('adaptive_shap', 'Adaptive SHAP', 'shap_lag_t', '#2ca02c'),
+        ('adaptive_shap_rolling_mean', 'Adaptive SHAP (Smooth)', 'shap_lag_t', '#d62728')
     ]
 
     # Filter to only include available methods
     available_methods = [(k, n, p, c) for k, n, p, c in methods if k in data]
     n_methods = len(available_methods)
 
-    fig, axes = plt.subplots(1, n_methods, figsize=(5 * n_methods, 5))
-    if n_methods == 1:
-        axes = [axes]  # Make it iterable
+    # Create 2x3 grid layout
+    fig, axes = plt.subplots(2, 3, figsize=(18, 10))
+    axes_flat = axes.flatten()
     fig.suptitle('Correlation: SHAP Values vs Ground Truth Importances',
                  fontsize=14, fontweight='bold')
 
@@ -1052,48 +1149,85 @@ def plot_correlation_with_true_importance(data, save_dir):
         if method_key not in data:
             continue
 
-        ax = axes[idx]
+        ax = axes_flat[idx]
         df = data[method_key]
-        shap_cols = [c for c in df.columns if c.startswith(shap_prefix)]
+
+        # Find ALL SHAP columns (lags and covariates) - same logic as other functions
+        shap_cols = [c for c in df.columns if c.startswith('shap_') and
+                     ('t-' in c or '_Z' in c or 'lag' in c or 'lstm' in c)]
 
         if len(shap_cols) == 0:
             ax.text(0.5, 0.5, 'No data', ha='center', va='center')
             ax.set_title(method_name)
             continue
 
-        # Sort SHAP columns
+        # Separate lags and covariates
+        lag_cols = [c for c in shap_cols if 't-' in c]
+        cov_cols = [c for c in shap_cols if '_Z' in c or 'covariate' in c.lower()]
+
+        # Sort lag columns by lag number
         def extract_lag(col_name):
             parts = col_name.split('t-')
             if len(parts) > 1:
-                return int(parts[-1])
+                try:
+                    return int(parts[-1])
+                except:
+                    return 0
             return 0
 
-        shap_cols = sorted(shap_cols, key=extract_lag)
-        n_features = min(len(shap_cols), len(imp_cols))
+        lag_cols = sorted(lag_cols, key=extract_lag)
+
+        # Sort covariate columns by number
+        def extract_cov_num(col_name):
+            parts = col_name.split('Z')
+            if len(parts) > 1:
+                try:
+                    return int(''.join(filter(str.isdigit, parts[-1])))
+                except:
+                    return 999
+            return 999
+
+        cov_cols = sorted(cov_cols, key=extract_cov_num)
+
+        # Combine: lags first, then covariates
+        shap_cols = lag_cols + cov_cols
+
+        # Handle mismatch: if SHAP has more features than true importances
+        n_shap_features = len(shap_cols)
+        n_true_features = len(imp_cols)
 
         # Calculate correlation for each feature
         correlations = []
         feature_labels = []
 
-        for i in range(n_features):
-            # Align data
-            if 'end_index' in df.columns:
-                end_indices = df['end_index'].values.astype(int)
-                end_indices = np.clip(end_indices, 0, len(true_imp_df) - 1)
-                true_vals = true_imp_df.iloc[end_indices][imp_cols[i]].values
-            else:
-                true_vals = true_imp_df[imp_cols[i]].iloc[:len(df)].values
-
-            # Normalize SHAP values
-            shap_vals = df[shap_cols[i]].values
-            shap_total = df[shap_cols].sum(axis=1).values + 1e-10
-            shap_vals_norm = shap_vals / shap_total
-
-            # Calculate correlation
-            if len(true_vals) == len(shap_vals_norm):
-                corr = np.corrcoef(true_vals, shap_vals_norm)[0, 1]
-                correlations.append(corr)
+        for i in range(n_shap_features):
+            # For lag features that don't have true importance, skip correlation
+            if i < (n_shap_features - n_true_features):
+                # This is a lag feature with no true importance (zero importance)
+                correlations.append(0.0)  # No correlation with zero
                 feature_labels.append(f'Feat {i}')
+            else:
+                # This is a covariate with true importance
+                true_idx = i - (n_shap_features - n_true_features)
+
+                # Align data
+                if 'end_index' in df.columns:
+                    end_indices = df['end_index'].values.astype(int)
+                    end_indices = np.clip(end_indices, 0, len(true_imp_df) - 1)
+                    true_vals = true_imp_df.iloc[end_indices][imp_cols[true_idx]].values
+                else:
+                    true_vals = true_imp_df[imp_cols[true_idx]].iloc[:len(df)].values
+
+                # Normalize SHAP values
+                shap_vals = df[shap_cols[i]].values
+                shap_total = df[shap_cols].sum(axis=1).values + 1e-10
+                shap_vals_norm = shap_vals / shap_total
+
+                # Calculate correlation
+                if len(true_vals) == len(shap_vals_norm):
+                    corr = np.corrcoef(true_vals, shap_vals_norm)[0, 1]
+                    correlations.append(corr)
+                    feature_labels.append(f'Feat {i}')
 
         if correlations:
             bars = ax.bar(range(len(correlations)), correlations, color=color, alpha=0.7,
@@ -1112,10 +1246,180 @@ def plot_correlation_with_true_importance(data, save_dir):
                        ha='center', va='bottom' if height >= 0 else 'top',
                        fontsize=8)
 
+    # Hide any unused subplots
+    for idx in range(n_methods, len(axes_flat)):
+        axes_flat[idx].set_visible(False)
+
     plt.tight_layout()
     plt.savefig(os.path.join(save_dir, 'correlation_with_true_importance.png'),
                 bbox_inches='tight')
     print(f"Saved: correlation_with_true_importance.png")
+    plt.close()
+
+
+def plot_all_methods_with_true_importance(data, save_dir):
+    """Create comprehensive heatmap comparison of all methods with ground truth."""
+    if 'true_importances' not in data:
+        print("No true importances available - skipping all methods + true importance plot")
+        return
+
+    true_imp_df = data['true_importances']
+    imp_cols = [c for c in true_imp_df.columns if c.startswith('true_imp_')]
+
+    # Define all methods
+    methods = [
+        ('global_shap', 'Vanilla SHAP', 'shap_lag_t'),
+        ('rolling_shap', 'Rolling (Fixed 100)', 'shap_lag_t'),
+        ('rolling_shap_max', 'Rolling (Max)', 'shap_lag_t'),
+        ('rolling_shap_mean', 'Rolling (Mean)', 'shap_lag_t'),
+        ('adaptive_shap', 'Adaptive SHAP', 'shap_lag_t'),
+        ('adaptive_shap_rolling_mean', 'Adaptive (Smooth)', 'shap_lag_t')
+    ]
+
+    # Filter to only available methods
+    available_methods = [(k, n, p) for k, n, p in methods if k in data]
+    n_methods = len(available_methods)
+
+    if n_methods == 0:
+        print("No methods available for comparison with true importance")
+        return
+
+    # Calculate grid dimensions (methods + 1 for true importance)
+    total_plots = n_methods + 1
+    n_cols = 3
+    n_rows = (total_plots + n_cols - 1) // n_cols
+
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(18, 5 * n_rows))
+    fig.suptitle('All Methods vs Ground Truth Importances', fontsize=14, fontweight='bold')
+
+    # Flatten axes for easier indexing
+    if n_rows == 1:
+        axes = axes.reshape(1, -1)
+    axes_flat = axes.flatten()
+
+    # Plot each method
+    for idx, (method_key, method_name, shap_prefix) in enumerate(available_methods):
+        ax = axes_flat[idx]
+        df = data[method_key]
+
+        # Find ALL SHAP columns (lags and covariates) - same logic as individual comparison
+        shap_cols = [c for c in df.columns if c.startswith('shap_') and
+                     ('t-' in c or '_Z' in c or 'lag' in c or 'lstm' in c)]
+
+        if len(shap_cols) == 0:
+            ax.text(0.5, 0.5, 'No data', ha='center', va='center')
+            ax.set_title(method_name)
+            continue
+
+        # Separate lags and covariates
+        lag_cols = [c for c in shap_cols if 't-' in c]
+        cov_cols = [c for c in shap_cols if '_Z' in c or 'covariate' in c.lower()]
+
+        # Sort lag columns by lag number
+        def extract_lag(col_name):
+            parts = col_name.split('t-')
+            if len(parts) > 1:
+                try:
+                    return int(parts[-1])
+                except:
+                    return 0
+            return 0
+
+        lag_cols = sorted(lag_cols, key=extract_lag)
+
+        # Sort covariate columns by number
+        def extract_cov_num(col_name):
+            parts = col_name.split('Z')
+            if len(parts) > 1:
+                try:
+                    return int(''.join(filter(str.isdigit, parts[-1])))
+                except:
+                    return 999
+            return 999
+
+        cov_cols = sorted(cov_cols, key=extract_cov_num)
+
+        # Combine: lags first, then covariates
+        shap_cols = lag_cols + cov_cols
+
+        if len(shap_cols) == 0:
+            ax.text(0.5, 0.5, 'No data', ha='center', va='center')
+            ax.set_title(method_name)
+            continue
+
+        # Create and normalize SHAP matrix (using absolute values)
+        shap_matrix = df[shap_cols].values.T
+        shap_matrix_norm = np.abs(shap_matrix) / (np.abs(shap_matrix).sum(axis=0, keepdims=True) + 1e-10)
+
+        # Plot heatmap
+        im = ax.imshow(shap_matrix_norm, aspect='auto', cmap='RdYlGn',
+                      interpolation='nearest', vmin=0, vmax=1)
+        ax.set_xlabel('Time Index')
+        ax.set_ylabel('Feature')
+        ax.set_title(method_name)
+
+        # Set y-axis labels
+        ax.set_yticks(range(len(shap_cols)))
+        ax.set_yticklabels([f'F{i}' for i in range(len(shap_cols))], fontsize=8)
+
+        # Set x-axis labels
+        if len(df) > 10:
+            step = max(len(df) // 5, 1)
+            ax.set_xticks(range(0, len(df), step))
+            ax.set_xticklabels([f'{int(df.iloc[i]["end_index"])}' for i in range(0, len(df), step)],
+                              rotation=45, fontsize=8)
+
+        # Add colorbar
+        plt.colorbar(im, ax=ax, label='Normalized Importance', fraction=0.046, pad=0.04)
+
+    # Plot true importance in the last subplot
+    ax = axes_flat[n_methods]
+    true_imp_matrix = true_imp_df[imp_cols].values.T
+
+    # Pad true importances to match SHAP feature count if needed
+    # Get number of SHAP features from first available method
+    n_shap_features = 0
+    if n_methods > 0:
+        first_method_key, _, _ = available_methods[0]
+        df = data[first_method_key]
+        shap_cols_first = [c for c in df.columns if c.startswith('shap_') and
+                          ('t-' in c or '_Z' in c or 'lag' in c or 'lstm' in c)]
+        n_shap_features = len(shap_cols_first)
+
+    n_true_features = len(imp_cols)
+    if n_true_features < n_shap_features:
+        # Pad with zeros at the beginning (for lag features)
+        n_missing = n_shap_features - n_true_features
+        padding = np.zeros((n_missing, true_imp_matrix.shape[1]))
+        true_imp_matrix = np.vstack([padding, true_imp_matrix])
+
+    im = ax.imshow(true_imp_matrix, aspect='auto', cmap='RdYlGn',
+                  interpolation='nearest', vmin=0, vmax=1)
+    ax.set_xlabel('Time Index')
+    ax.set_ylabel('Feature')
+    ax.set_title('Ground Truth', fontweight='bold', color='darkred')
+
+    # Set y-axis labels (matching SHAP feature count)
+    ax.set_yticks(range(true_imp_matrix.shape[0]))
+    ax.set_yticklabels([f'F{i}' for i in range(true_imp_matrix.shape[0])], fontsize=8)
+
+    # Set x-axis labels
+    if len(true_imp_df) > 10:
+        step = max(len(true_imp_df) // 5, 1)
+        ax.set_xticks(range(0, len(true_imp_df), step))
+        ax.set_xticklabels([f'{i}' for i in range(0, len(true_imp_df), step)],
+                          rotation=45, fontsize=8)
+
+    # Add colorbar
+    plt.colorbar(im, ax=ax, label='True Importance', fraction=0.046, pad=0.04)
+
+    # Hide any unused subplots
+    for idx in range(total_plots, len(axes_flat)):
+        axes_flat[idx].set_visible(False)
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, 'all_methods_with_true_importance.png'), bbox_inches='tight')
+    print(f"Saved: all_methods_with_true_importance.png")
     plt.close()
 
 
@@ -1660,6 +1964,11 @@ def main():
         plot_correlation_with_true_importance(data, save_dir)
     except Exception as e:
         print(f"Error in correlation with true importance: {e}")
+
+    try:
+        plot_all_methods_with_true_importance(data, save_dir)
+    except Exception as e:
+        print(f"Error in all methods with true importance: {e}")
 
     try:
         plot_rolling_window_comparison(data, save_dir)

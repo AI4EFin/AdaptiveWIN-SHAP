@@ -8,9 +8,9 @@ echo ""
 
 # Array of all datasets
 datasets=(
-    #"piecewise_ar3"
+    "piecewise_ar3"
     "arx_rotating"
-    #"trend_season"
+    "trend_season"
     "spike_process"
     "tvp_arx"
     "garch_regime"
@@ -18,7 +18,7 @@ datasets=(
 )
 
 # Configuration
-N0=75
+N0=100
 JUMP=1
 NUM_RUNS=9
 
