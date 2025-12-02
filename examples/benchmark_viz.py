@@ -1201,11 +1201,12 @@ def plot_correlation_with_true_importance(data, save_dir):
         feature_labels = []
 
         for i in range(n_shap_features):
+            feature_labels.append(f'Feat {i}')
+
             # For lag features that don't have true importance, skip correlation
             if i < (n_shap_features - n_true_features):
                 # This is a lag feature with no true importance (zero importance)
                 correlations.append(0.0)  # No correlation with zero
-                feature_labels.append(f'Feat {i}')
             else:
                 # This is a covariate with true importance
                 true_idx = i - (n_shap_features - n_true_features)
@@ -1224,10 +1225,16 @@ def plot_correlation_with_true_importance(data, save_dir):
                 shap_vals_norm = shap_vals / shap_total
 
                 # Calculate correlation
-                if len(true_vals) == len(shap_vals_norm):
+                if len(true_vals) == len(shap_vals_norm) and len(true_vals) > 0:
                     corr = np.corrcoef(true_vals, shap_vals_norm)[0, 1]
-                    correlations.append(corr)
-                    feature_labels.append(f'Feat {i}')
+                    # Handle NaN correlations (can happen if variance is zero)
+                    if np.isnan(corr):
+                        correlations.append(0.0)
+                    else:
+                        correlations.append(corr)
+                else:
+                    # Length mismatch - append 0 to maintain alignment
+                    correlations.append(0.0)
 
         if correlations:
             bars = ax.bar(range(len(correlations)), correlations, color=color, alpha=0.7,
