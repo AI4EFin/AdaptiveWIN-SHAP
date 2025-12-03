@@ -42,15 +42,20 @@ def load_benchmark_data(results_dir):
         data['summary'] = pd.read_csv(summary_path)
 
     # Load individual method results
-    # Load global and adaptive variants
-    for method in ['global_shap', 'adaptive_shap', 'adaptive_shap_rolling_mean']:
+    # Load global, timeshap, and adaptive variants
+    for method in ['global_shap', 'timeshap', 'adaptive_shap', 'adaptive_shap_rolling_mean']:
         result_path = os.path.join(results_dir, f'{method}_results.csv')
         if os.path.exists(result_path):
             data[method] = pd.read_csv(result_path)
 
-    # Load rolling window variants
-    for suffix in ['', '_max', '_mean']:
-        method_key = f'rolling_shap{suffix}'
+    # Load rolling window (base only, no max/mean variants)
+    result_path = os.path.join(results_dir, 'rolling_shap_results.csv')
+    if os.path.exists(result_path):
+        data['rolling_shap'] = pd.read_csv(result_path)
+
+    # Load adaptive SHAP max and mean variants
+    for suffix in ['_max', '_mean']:
+        method_key = f'adaptive_shap{suffix}'
         result_path = os.path.join(results_dir, f'{method_key}_results.csv')
         if os.path.exists(result_path):
             data[method_key] = pd.read_csv(result_path)
@@ -102,15 +107,15 @@ def plot_faithfulness_comparison(data, save_dir):
         print("No faithfulness metrics found in summary - skipping faithfulness comparison")
         return
 
-    fig, axes = plt.subplots(2, 3, figsize=(18, 10))
+    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
     fig.suptitle('Faithfulness Comparison Across Methods', fontsize=14, fontweight='bold')
 
-    eval_types = ['prtb', 'sqnc']
+    eval_types = ['prtb']
     percentiles = ['p90', 'p70', 'p50']
 
     for i, eval_type in enumerate(eval_types):
         for j, percentile in enumerate(percentiles):
-            ax = axes[i, j]
+            ax = axes[j]
 
             eval_key = f'{eval_type}_{percentile}'
             subset = faith_summary[faith_summary['evaluation'] == eval_key]
@@ -121,26 +126,27 @@ def plot_faithfulness_comparison(data, save_dir):
                 colors = []
                 color_map = {
                     'global_shap': '#1f77b4',
+                    'timeshap': '#e377c2',
                     'rolling_shap': '#ff7f0e',
-                    'rolling_shap_max': '#9467bd',
-                    'rolling_shap_mean': '#8c564b',
+                    'adaptive_shap_max': '#9467bd',
+                    'adaptive_shap_mean': '#8c564b',
                     'adaptive_shap': '#2ca02c',
                     'adaptive_shap_rolling_mean': '#d62728'
                 }
 
                 # Dynamically get all methods in the data
                 available_methods = subset['method'].unique()
-                method_order = ['global_shap', 'rolling_shap', 'rolling_shap_max', 'rolling_shap_mean', 'adaptive_shap', 'adaptive_shap_rolling_mean']
+                method_order = ['global_shap', 'timeshap', 'rolling_shap', 'adaptive_shap_max', 'adaptive_shap_mean', 'adaptive_shap', 'adaptive_shap_rolling_mean']
 
                 for method in method_order:
                     if method in available_methods:
                         method_data = subset[subset['method'] == method]
                         if len(method_data) > 0:
                             # Format method name for display
-                            if method == 'rolling_shap_max':
-                                display_name = 'Rolling (Max)'
-                            elif method == 'rolling_shap_mean':
-                                display_name = 'Rolling (Mean)'
+                            if method == 'adaptive_shap_max':
+                                display_name = 'Adaptive (Max)'
+                            elif method == 'adaptive_shap_mean':
+                                display_name = 'Adaptive (Mean)'
                             elif method == 'adaptive_shap_rolling_mean':
                                 display_name = 'Adaptive (Smooth)'
                             else:
@@ -207,26 +213,27 @@ def plot_ablation_comparison(data, save_dir):
                 colors = []
                 color_map = {
                     'global_shap': '#1f77b4',
+                    'timeshap': '#e377c2',
                     'rolling_shap': '#ff7f0e',
-                    'rolling_shap_max': '#9467bd',
-                    'rolling_shap_mean': '#8c564b',
+                    'adaptive_shap_max': '#9467bd',
+                    'adaptive_shap_mean': '#8c564b',
                     'adaptive_shap': '#2ca02c',
                     'adaptive_shap_rolling_mean': '#d62728'
                 }
 
                 # Dynamically get all methods in the data
                 available_methods = subset['method'].unique()
-                method_order = ['global_shap', 'rolling_shap', 'rolling_shap_max', 'rolling_shap_mean', 'adaptive_shap', 'adaptive_shap_rolling_mean']
+                method_order = ['global_shap', 'timeshap', 'rolling_shap', 'adaptive_shap_max', 'adaptive_shap_mean', 'adaptive_shap', 'adaptive_shap_rolling_mean']
 
                 for method in method_order:
                     if method in available_methods:
                         method_data = subset[subset['method'] == method]
                         if len(method_data) > 0:
                             # Format method name for display
-                            if method == 'rolling_shap_max':
-                                display_name = 'Rolling (Max)'
-                            elif method == 'rolling_shap_mean':
-                                display_name = 'Rolling (Mean)'
+                            if method == 'adaptive_shap_max':
+                                display_name = 'Adaptive (Max)'
+                            elif method == 'adaptive_shap_mean':
+                                display_name = 'Adaptive (Mean)'
                             elif method == 'adaptive_shap_rolling_mean':
                                 display_name = 'Adaptive (Smooth)'
                             else:
@@ -280,15 +287,16 @@ def plot_ablation_mif_vs_lif(data, save_dir):
     percentiles = ['p90', 'p70', 'p50']
     color_map = {
         'global_shap': '#1f77b4',
+        'timeshap': '#e377c2',
         'rolling_shap': '#ff7f0e',
-        'rolling_shap_max': '#9467bd',
-        'rolling_shap_mean': '#8c564b',
+        'adaptive_shap_max': '#9467bd',
+        'adaptive_shap_mean': '#8c564b',
         'adaptive_shap': '#2ca02c',
         'adaptive_shap_rolling_mean': '#d62728'
     }
 
     # Define method order (all methods)
-    method_order = ['global_shap', 'rolling_shap', 'rolling_shap_max', 'rolling_shap_mean',
+    method_order = ['global_shap', 'timeshap', 'rolling_shap', 'adaptive_shap_max', 'adaptive_shap_mean',
                     'adaptive_shap', 'adaptive_shap_rolling_mean']
 
     for j, percentile in enumerate(percentiles):
@@ -312,10 +320,10 @@ def plot_ablation_mif_vs_lif(data, save_dir):
 
             if len(mif_data) > 0 and len(lif_data) > 0:
                 # Format method name for display
-                if method == 'rolling_shap_max':
-                    display_name = 'Rolling (Max)'
-                elif method == 'rolling_shap_mean':
-                    display_name = 'Rolling (Mean)'
+                if method == 'adaptive_shap_max':
+                    display_name = 'Adaptive (Max)'
+                elif method == 'adaptive_shap_mean':
+                    display_name = 'Adaptive (Mean)'
                 elif method == 'adaptive_shap_rolling_mean':
                     display_name = 'Adaptive (Smooth)'
                 else:
@@ -361,19 +369,29 @@ def plot_ablation_mif_vs_lif(data, save_dir):
 
 def plot_shap_over_time(data, save_dir):
     """Plot SHAP values over time for each method."""
-    fig, axes = plt.subplots(3, 1, figsize=(14, 12))
-    fig.suptitle('SHAP Values Over Time', fontsize=14, fontweight='bold')
-
     methods = [
         ('global_shap', 'Vanilla SHAP', 'shap_lag_t'),
+        ('timeshap', 'TimeShap', 'shap_lag_t'),
         ('rolling_shap', 'Rolling Window SHAP', 'shap_lag_t'),
         ('adaptive_shap', 'Adaptive SHAP', 'shap_lag_t')
     ]
 
-    for idx, (method_key, method_name, shap_prefix) in enumerate(methods):
-        if method_key not in data:
-            continue
+    # Filter to only available methods
+    available_methods = [(k, n, p) for k, n, p in methods if k in data]
+    n_methods = len(available_methods)
 
+    if n_methods == 0:
+        print("No methods available for SHAP over time plot")
+        return
+
+    fig, axes = plt.subplots(n_methods, 1, figsize=(14, 4 * n_methods))
+    fig.suptitle('SHAP Values Over Time', fontsize=14, fontweight='bold')
+
+    # Handle case when there's only one method
+    if n_methods == 1:
+        axes = [axes]
+
+    for idx, (method_key, method_name, shap_prefix) in enumerate(available_methods):
         ax = axes[idx]
         df = data[method_key]
 
@@ -404,9 +422,10 @@ def plot_shap_heatmaps(data, save_dir):
     """Create heatmaps of SHAP values for each method."""
     methods = [
         ('global_shap', 'Vanilla SHAP', 'shap_lag_t'),
+        ('timeshap', 'TimeShap', 'shap_lag_t'),
         ('rolling_shap', 'Rolling (Fixed 100)', 'shap_lag_t'),
-        ('rolling_shap_max', 'Rolling (Max)', 'shap_lag_t'),
-        ('rolling_shap_mean', 'Rolling (Mean)', 'shap_lag_t'),
+        ('adaptive_shap_max', 'Adaptive (Max)', 'shap_lag_t'),
+        ('adaptive_shap_mean', 'Adaptive (Mean)', 'shap_lag_t'),
         ('adaptive_shap', 'Adaptive SHAP', 'shap_lag_t'),
         ('adaptive_shap_rolling_mean', 'Adaptive (Smooth)', 'shap_lag_t')
     ]
@@ -495,7 +514,7 @@ def plot_prediction_comparison(data, save_dir):
 
     # Time series comparison
     ax = axes[0, 0]
-    for method_key, label in [('global_shap', 'Global'),
+    for method_key, label in [('global_shap', 'Vanilla'),
                                ('rolling_shap', 'Rolling'),
                                ('adaptive_shap', 'Adaptive')]:
         if method_key in data:
@@ -508,8 +527,8 @@ def plot_prediction_comparison(data, save_dir):
     ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=3, frameon=False)
     # Scatter plots
     scatter_pairs = [
-        (('global_shap', 'rolling_shap'), 'Global vs Rolling', axes[0, 1]),
-        (('global_shap', 'adaptive_shap'), 'Global vs Adaptive', axes[1, 0]),
+        (('global_shap', 'rolling_shap'), 'Vanilla vs Rolling', axes[0, 1]),
+        (('global_shap', 'adaptive_shap'), 'Vanilla vs Adaptive', axes[1, 0]),
         (('rolling_shap', 'adaptive_shap'), 'Rolling vs Adaptive', axes[1, 1])
     ]
 
@@ -610,10 +629,10 @@ def plot_window_size_analysis(data, save_dir):
 
 def plot_temporal_faithfulness(data, save_dir):
     """Plot faithfulness scores over time for each method."""
-    fig, axes = plt.subplots(2, 3, figsize=(18, 10))
+    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
     fig.suptitle('Faithfulness Scores Over Time', fontsize=14, fontweight='bold')
 
-    eval_types = ['prtb', 'sqnc']
+    eval_types = ['prtb']
     percentiles = ['p90', 'p70', 'p50']
 
     # Store handles and labels for shared legend
@@ -621,7 +640,7 @@ def plot_temporal_faithfulness(data, save_dir):
 
     for i, eval_type in enumerate(eval_types):
         for j, percentile in enumerate(percentiles):
-            ax = axes[i, j]
+            ax = axes[j]
 
             eval_key = f'{eval_type}_{percentile}'
             col_name = f'faithfulness_{eval_key}'
@@ -630,8 +649,8 @@ def plot_temporal_faithfulness(data, save_dir):
             for method_key, label, color in [
                 ('global_shap', 'Vanilla', '#1f77b4'),
                 ('rolling_shap', 'Rolling (100)', '#ff7f0e'),
-                ('rolling_shap_max', 'Rolling (Max)', '#9467bd'),
-                ('rolling_shap_mean', 'Rolling (Mean)', '#8c564b'),
+                ('adaptive_shap_max', 'Adaptive (Max)', '#9467bd'),
+                ('adaptive_shap_mean', 'Adaptive (Mean)', '#8c564b'),
                 ('adaptive_shap', 'Adaptive', '#2ca02c'),
                 ('adaptive_shap_rolling_mean', 'Adaptive (Smooth)', '#d62728')
             ]:
@@ -689,8 +708,8 @@ def plot_temporal_ablation(data, save_dir):
             for method_key, label, color in [
                 ('global_shap', 'Vanilla', '#1f77b4'),
                 ('rolling_shap', 'Rolling (100)', '#ff7f0e'),
-                ('rolling_shap_max', 'Rolling (Max)', '#9467bd'),
-                ('rolling_shap_mean', 'Rolling (Mean)', '#8c564b'),
+                ('adaptive_shap_max', 'Adaptive (Max)', '#9467bd'),
+                ('adaptive_shap_mean', 'Adaptive (Mean)', '#8c564b'),
                 ('adaptive_shap', 'Adaptive', '#2ca02c'),
                 ('adaptive_shap_rolling_mean', 'Adaptive (Smooth)', '#d62728')
             ]:
@@ -754,14 +773,15 @@ def create_summary_dashboard(data, save_dir):
         ablation_scores = []
         colors = {
             'global_shap': '#1f77b4',
+        'timeshap': '#e377c2',
             'rolling_shap': '#ff7f0e',
-            'rolling_shap_max': '#9467bd',
-            'rolling_shap_mean': '#8c564b',
+            'adaptive_shap_max': '#9467bd',
+            'adaptive_shap_mean': '#8c564b',
             'adaptive_shap': '#2ca02c',
             'adaptive_shap_rolling_mean': '#d62728'
         }
 
-        for method in ['global_shap', 'rolling_shap', 'rolling_shap_max', 'rolling_shap_mean', 'adaptive_shap', 'adaptive_shap_rolling_mean']:
+        for method in ['global_shap', 'rolling_shap', 'adaptive_shap_max', 'adaptive_shap_mean', 'adaptive_shap', 'adaptive_shap_rolling_mean']:
             if len(faith_data) > 0:
                 m_faith = faith_data[faith_data['method'] == method]
                 if len(m_faith) > 0:
@@ -814,7 +834,7 @@ def create_summary_dashboard(data, save_dir):
     ax2.axis('off')
 
     stats_data = []
-    for method_key, method_name in [('global_shap', 'Global'),
+    for method_key, method_name in [('global_shap', 'Vanilla'),
                                      ('rolling_shap', 'Rolling'),
                                      ('adaptive_shap', 'Adaptive')]:
         if method_key in data:
@@ -837,7 +857,7 @@ def create_summary_dashboard(data, save_dir):
 
     # 3. SHAP values over time (mini version)
     ax3 = fig.add_subplot(gs[1, :])
-    for method_key, label, shap_prefix in [('global_shap', 'Global', 'shap_lag_t'),
+    for method_key, label, shap_prefix in [('global_shap', 'Vanilla', 'shap_lag_t'),
                                             ('rolling_shap', 'Rolling', 'shap_lag_t'),
                                             ('adaptive_shap', 'Adaptive', 'shap_lag_t')]:
         if method_key in data:
@@ -976,9 +996,10 @@ def plot_shap_vs_true_importance_heatmaps(data, save_dir):
     # Create comparison for each method - include all rolling variants
     methods = [
         ('global_shap', 'Vanilla SHAP'),
+        ('timeshap', 'TimeShap'),
         ('rolling_shap', 'Rolling (Fixed 100)'),
-        ('rolling_shap_max', 'Rolling (Max)'),
-        ('rolling_shap_mean', 'Rolling (Mean)'),
+        ('adaptive_shap_max', 'Adaptive (Max)'),
+        ('adaptive_shap_mean', 'Adaptive (Mean)'),
         ('adaptive_shap', 'Adaptive SHAP'),
         ('adaptive_shap_rolling_mean', 'Adaptive SHAP (Smooth)')
     ]
@@ -1128,9 +1149,10 @@ def plot_correlation_with_true_importance(data, save_dir):
     # Include all rolling window variants
     methods = [
         ('global_shap', 'Vanilla SHAP', 'shap_lag_t', '#1f77b4'),
+        ('timeshap', 'TimeShap', 'shap_lag_t', '#e377c2'),
         ('rolling_shap', 'Rolling (Fixed 100)', 'shap_lag_t', '#ff7f0e'),
-        ('rolling_shap_max', 'Rolling (Max)', 'shap_lag_t', '#9467bd'),
-        ('rolling_shap_mean', 'Rolling (Mean)', 'shap_lag_t', '#8c564b'),
+        ('adaptive_shap_max', 'Adaptive (Max)', 'shap_lag_t', '#9467bd'),
+        ('adaptive_shap_mean', 'Adaptive (Mean)', 'shap_lag_t', '#8c564b'),
         ('adaptive_shap', 'Adaptive SHAP', 'shap_lag_t', '#2ca02c'),
         ('adaptive_shap_rolling_mean', 'Adaptive SHAP (Smooth)', 'shap_lag_t', '#d62728')
     ]
@@ -1139,9 +1161,25 @@ def plot_correlation_with_true_importance(data, save_dir):
     available_methods = [(k, n, p, c) for k, n, p, c in methods if k in data]
     n_methods = len(available_methods)
 
-    # Create 2x3 grid layout
-    fig, axes = plt.subplots(2, 3, figsize=(18, 10))
-    axes_flat = axes.flatten()
+    if n_methods == 0:
+        print("No methods available for correlation plot")
+        return
+
+    # Create grid layout (dynamically adjust based on number of methods)
+    n_cols = 3
+    n_rows = (n_methods + n_cols - 1) // n_cols  # Ceiling division
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(18, 5 * n_rows))
+
+    # Handle different subplot configurations
+    if n_rows == 1 and n_cols == 1:
+        axes_flat = [axes]
+    elif n_rows == 1:
+        axes_flat = axes.flatten()
+    elif n_cols == 1:
+        axes_flat = axes.flatten()
+    else:
+        axes_flat = axes.flatten()
+
     fig.suptitle('Correlation: SHAP Values vs Ground Truth Importances',
                  fontsize=14, fontweight='bold')
 
@@ -1276,9 +1314,10 @@ def plot_all_methods_with_true_importance(data, save_dir):
     # Define all methods
     methods = [
         ('global_shap', 'Vanilla SHAP', 'shap_lag_t'),
+        ('timeshap', 'TimeShap', 'shap_lag_t'),
         ('rolling_shap', 'Rolling (Fixed 100)', 'shap_lag_t'),
-        ('rolling_shap_max', 'Rolling (Max)', 'shap_lag_t'),
-        ('rolling_shap_mean', 'Rolling (Mean)', 'shap_lag_t'),
+        ('adaptive_shap_max', 'Adaptive (Max)', 'shap_lag_t'),
+        ('adaptive_shap_mean', 'Adaptive (Mean)', 'shap_lag_t'),
         ('adaptive_shap', 'Adaptive SHAP', 'shap_lag_t'),
         ('adaptive_shap_rolling_mean', 'Adaptive (Smooth)', 'shap_lag_t')
     ]
@@ -1755,7 +1794,7 @@ def plot_residual_analysis(data, save_dir):
     """Analyze prediction residuals comparing each method against y_true."""
     # Check if y_true is available in at least one method
     has_y_true = False
-    for method_key in ['global_shap', 'rolling_shap', 'rolling_shap_max', 'rolling_shap_mean', 'adaptive_shap']:
+    for method_key in ['global_shap', 'rolling_shap', 'adaptive_shap_max', 'adaptive_shap_mean', 'adaptive_shap']:
         if method_key in data and 'y_true' in data[method_key].columns:
             has_y_true = True
             break
@@ -1767,9 +1806,10 @@ def plot_residual_analysis(data, save_dir):
     # Define methods with colors
     methods = [
         ('global_shap', 'Vanilla SHAP', '#1f77b4'),
+        ('timeshap', 'TimeShap', '#e377c2'),
         ('rolling_shap', 'Rolling (Fixed 100)', '#ff7f0e'),
-        ('rolling_shap_max', 'Rolling (Max)', '#9467bd'),
-        ('rolling_shap_mean', 'Rolling (Mean)', '#8c564b'),
+        ('adaptive_shap_max', 'Adaptive (Max)', '#9467bd'),
+        ('adaptive_shap_mean', 'Adaptive (Mean)', '#8c564b'),
         ('adaptive_shap', 'Adaptive SHAP', '#2ca02c')
     ]
 

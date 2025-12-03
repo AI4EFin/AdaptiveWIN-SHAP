@@ -12,9 +12,7 @@ datasets=(
     "arx_rotating"
     "trend_season"
     "spike_process"
-    "tvp_arx"
     "garch_regime"
-    "cointegration"
 )
 
 # Configuration

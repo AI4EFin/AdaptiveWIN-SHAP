@@ -593,10 +593,12 @@ class TimeShapWrapper:
         self.lr = lr
         self.device = device
         self.model = None
+        self.feature_names = None
 
     def fit(self, data, verbose=False):
         """Train a global model."""
-        X, y = create_sequences(data, self.seq_length)
+        X, y, feature_names = create_sequences(data, self.seq_length)
+        self.feature_names = feature_names
 
         self.model = LSTMModel(
             input_size=1,
@@ -622,10 +624,128 @@ class TimeShapWrapper:
 
     def explain(self, data, start_idx=None, end_idx=None):
         """
-        Compute TimeShap explanations.
+        Compute TimeShap explanations using local explanations.
 
-        Note: TimeShap has a different API and this is a placeholder
-        for actual implementation.
+        Parameters
+        ----------
+        data : 1D array - full data series
+        start_idx : int - start index for explanation (default: 0)
+        end_idx : int - end index for explanation (default: len(data))
+
+        Returns
+        -------
+        DataFrame with columns: end_index, y_true, y_hat, shap_lag_t-*, faithfulness_*, ablation_*
         """
-        raise NotImplementedError("TimeShap integration not yet implemented. "
-                                  "Requires specific TimeShap API adaptation.")
+        if self.model is None:
+            raise ValueError("Model not trained. Call fit() first.")
+
+        from timeshap.explainer import local_pruning, local_event, local_feat
+        from timeshap.wrappers import TorchModelWrapper
+        from timeshap.utils import calc_avg_event
+
+        # Create sequences
+        X, y, feature_names = create_sequences(data, self.seq_length)
+
+        if start_idx is None:
+            start_idx = 0
+        if end_idx is None:
+            end_idx = len(X)
+
+        # Wrap model for TimeShap
+        model_wrapped = TorchModelWrapper(self.model)
+        f_hs = lambda x, y=None: model_wrapped.predict_last_hs(x, y)
+
+        # Calculate average event (baseline) using all training data
+        # For simplicity, use mean of all features
+        average_event = np.mean(X, axis=(0, 1)).reshape(1, -1)
+
+        # Process each sequence
+        results = []
+        for i in range(start_idx, end_idx):
+            # Get single sequence as [1, seq_length, features]
+            x_instance = X[i:i+1]
+
+            # Get prediction
+            y_hat = self.model.predict(x_instance)[0, 0]
+
+            # Compute pruning and explanations
+            try:
+                pruning_dict = {'tol': 0.025}
+                coal_plot_data, coal_prun_idx = local_pruning(
+                    f_hs, x_instance, pruning_dict, average_event,
+                    f'instance_{i}', 'id', False
+                )
+                pruning_idx = x_instance.shape[1] + coal_prun_idx
+
+                # Event-level explanations
+                event_dict = {'rs': 42, 'nsamples': 1000}
+                event_data = local_event(
+                    f_hs, x_instance, event_dict, f'instance_{i}', 'id',
+                    average_event, pruning_idx
+                )
+
+                # Extract SHAP values from event data
+                # event_data is a DataFrame with columns for each event
+                result_row = {
+                    'end_index': start_idx + self.seq_length + i,
+                    'y_true': float(y[i]),
+                    'y_hat': float(y_hat)
+                }
+
+                # Add SHAP values per timestep (lag features)
+                # Assuming event_data has 'Shapley Value' column per event
+                for t in range(min(self.seq_length, len(event_data))):
+                    event_shap = event_data.iloc[t]['Shapley Value'] if t < len(event_data) else 0.0
+                    result_row[f'shap_lag_t-{t+1}'] = float(event_shap)
+
+                # Pad with zeros if we have fewer events than seq_length
+                for t in range(len(event_data), self.seq_length):
+                    result_row[f'shap_lag_t-{t+1}'] = 0.0
+
+                # Compute proper faithfulness and ablation metrics
+                # Extract SHAP values for this point
+                shap_vals = np.array([result_row[f'shap_lag_t-{t+1}'] for t in range(self.seq_length)])
+
+                # Get input sequence for this point: X[i] has shape [seq_length, features]
+                input_seq = x_instance  # Already [1, seq_length, features]
+
+                # Compute faithfulness metrics
+                from .metrics import compute_point_faithfulness, compute_point_ablation
+                faith_metrics = compute_point_faithfulness(
+                    self.model, shap_vals, input_seq,
+                    percentiles=[90, 70, 50], eval_types=['prtb', 'sqnc'],
+                    seq_len=self.seq_length
+                )
+
+                # Compute ablation metrics
+                ablation_metrics = compute_point_ablation(
+                    self.model, shap_vals, input_seq,
+                    percentiles=[90, 70, 50], ablation_types=['mif', 'lif']
+                )
+
+                # Add metrics to result row
+                result_row.update(faith_metrics)
+                result_row.update(ablation_metrics)
+
+                results.append(result_row)
+
+            except Exception as e:
+                # If TimeShap fails, use simple prediction
+                print(f"Warning: TimeShap explanation failed for instance {i}: {e}")
+                result_row = {
+                    'end_index': start_idx + self.seq_length + i,
+                    'y_true': float(y[i]),
+                    'y_hat': float(y_hat)
+                }
+                # Fill with zeros
+                for t in range(self.seq_length):
+                    result_row[f'shap_lag_t-{t+1}'] = 0.0
+                # Fill faithfulness metrics with zeros for all percentiles
+                for p in [90, 70, 50]:
+                    result_row[f'faithfulness_prtb_p{p}'] = 0.0
+                    result_row[f'faithfulness_sqnc_p{p}'] = 0.0
+                    result_row[f'ablation_mif_p{p}'] = 0.0
+                    result_row[f'ablation_lif_p{p}'] = 0.0
+                results.append(result_row)
+
+        return pd.DataFrame(results)

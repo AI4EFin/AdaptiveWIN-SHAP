@@ -9,12 +9,10 @@ echo ""
 # Array of all datasets (matching run_all_benchmarks.sh)
 datasets=(
     "piecewise_ar3"
-    "arx_rotating"
-    "trend_season"
-    "spike_process"
-    "tvp_arx"
-    "garch_regime"
-    "cointegration"
+    #"arx_rotating"
+    #"trend_season"
+    #"spike_process"
+    #"garch_regime"
 )
 
 # Track results

@@ -1,0 +1,8 @@
+method,faithfulness_prtb,ablation_mif,ablation_lif,mif_lif_ratio,pearson,spearman
+Adaptive (Max),0.7643,0.5857,0.2358,2.0383,0.2301,0.3175
+Adaptive (Mean),0.6994,0.5503,0.2019,2.615,0.4379,0.4815
+Adaptive (Smoothed),0.6789,0.5305,0.2038,2.666,0.2335,0.2503
+Adaptive SHAP,0.6752,0.5254,0.2017,2.6897,0.2274,0.2444
+Rolling SHAP,0.4087,0.2954,0.1557,1.768,0.3018,0.2945
+TimeShap,0.4839,0.4163,0.7378,0.9288,0.0243,0.0274
+Vanilla SHAP,0.5347,0.4275,0.2365,1.6235,0.1087,0.1351

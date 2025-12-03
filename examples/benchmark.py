@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from benchmarking import (
     GlobalSHAP,
     RollingWindowSHAP,
+    TimeShapWrapper,
     create_sequences
 )
 from adaptivewinshap import AdaptiveWinShap, ChangeDetector, AdaptiveModel, store_init_kwargs
@@ -223,6 +224,49 @@ def run_benchmark(dataset_path, output_dir, device='cpu', verbose=True,
         print(f"Vanilla SHAP computed for {len(global_results)} time points")
         print("Faithfulness and ablation scores computed inline during SHAP computation")
 
+    # ========== Method 1b: TimeShap ==========
+    if verbose:
+        print("\n" + "="*60)
+        print("Method 1b: TimeShap (Optional - if library available)")
+        print("="*60)
+
+    try:
+        timeshap_wrapper = TimeShapWrapper(
+            seq_length=SEQ_LENGTH,
+            hidden_size=HIDDEN_SIZE,
+            num_layers=NUM_LAYERS,
+            dropout=DROPOUT,
+            epochs=EPOCHS,
+            batch_size=BATCH_SIZE,
+            lr=LR,
+            device=device
+        )
+
+        if verbose:
+            print("Training TimeShap model...")
+        timeshap_wrapper.fit(data, verbose=verbose)
+
+        if verbose:
+            print("Computing TimeShap explanations...")
+        timeshap_results = timeshap_wrapper.explain(data)
+        timeshap_results.to_csv(os.path.join(output_dir, 'timeshap_results.csv'), index=False)
+
+        if verbose:
+            print(f"TimeShap computed for {len(timeshap_results)} time points")
+            print("Faithfulness and ablation scores computed inline during SHAP computation")
+    except ImportError as e:
+        if verbose:
+            print(f"TimeShap library not available: {e}")
+            print("Skipping TimeShap method.")
+    except NotImplementedError as e:
+        if verbose:
+            print(f"TimeShap not yet fully implemented: {e}")
+            print("Skipping TimeShap method.")
+    except Exception as e:
+        if verbose:
+            print(f"Error running TimeShap: {e}")
+            print("Skipping TimeShap method.")
+
     # ========== Method 2: Rolling Window SHAP (Multiple Window Sizes) ==========
     if verbose:
         print("\n" + "="*60)
@@ -231,7 +275,7 @@ def run_benchmark(dataset_path, output_dir, device='cpu', verbose=True,
 
     # Determine window sizes to use
     rolling_window_configs = [
-        (ROLLING_WINDOW_SIZE, 'fixed', 'Fixed Window (100)')
+        (ROLLING_WINDOW_SIZE, 'rolling', 'Fixed Window (100)')
     ]
 
     # Add adaptive-based window sizes if available
@@ -274,8 +318,12 @@ def run_benchmark(dataset_path, output_dir, device='cpu', verbose=True,
 
         rolling_results = rolling_shap.rolling_explain(data, covariates=covariates, stride=ROLLING_STRIDE, verbose=verbose)
 
-        # Save with appropriate suffix
-        output_filename = f'rolling_shap_{suffix}_results.csv' if suffix != 'fixed' else 'rolling_shap_results.csv'
+        # Save with appropriate suffix - use adaptive_shap for max/mean, rolling_shap for fixed
+        if suffix == 'rolling':
+            output_filename = 'rolling_shap_results.csv'
+        else:
+            # max and mean use adaptive window sizes, so name them as adaptive_shap
+            output_filename = f'adaptive_shap_{suffix}_results.csv'
         rolling_results.to_csv(os.path.join(output_dir, output_filename), index=False)
 
         if verbose:
@@ -479,15 +527,31 @@ def run_benchmark(dataset_path, output_dir, device='cpu', verbose=True,
         if verbose:
             print(f"  Vanilla SHAP: {len(global_df)} time points")
 
-    # Process Rolling SHAP variants
-    for suffix, name in [('', 'Fixed'), ('_max', 'Max'), ('_mean', 'Mean')]:
-        rolling_path = os.path.join(output_dir, f'rolling_shap{suffix}_results.csv')
-        if os.path.exists(rolling_path):
-            rolling_df = pd.read_csv(rolling_path)
-            method_name = f'rolling_shap{suffix}' if suffix else 'rolling_shap'
-            summary_data.extend(extract_metrics(rolling_df, method_name))
+    # Process TimeShap
+    timeshap_path = os.path.join(output_dir, 'timeshap_results.csv')
+    if os.path.exists(timeshap_path):
+        timeshap_df = pd.read_csv(timeshap_path)
+        summary_data.extend(extract_metrics(timeshap_df, 'timeshap'))
+        if verbose:
+            print(f"  TimeShap: {len(timeshap_df)} time points")
+
+    # Process Rolling SHAP (Fixed window)
+    rolling_path = os.path.join(output_dir, 'rolling_shap_results.csv')
+    if os.path.exists(rolling_path):
+        rolling_df = pd.read_csv(rolling_path)
+        summary_data.extend(extract_metrics(rolling_df, 'rolling_shap'))
+        if verbose:
+            print(f"  Rolling SHAP (Fixed): {len(rolling_df)} windows")
+
+    # Process Adaptive SHAP variants (Max and Mean window sizes)
+    for suffix, name in [('max', 'Max'), ('mean', 'Mean')]:
+        adaptive_path = os.path.join(output_dir, f'adaptive_shap_{suffix}_results.csv')
+        if os.path.exists(adaptive_path):
+            adaptive_df = pd.read_csv(adaptive_path)
+            method_name = f'adaptive_shap_{suffix}'
+            summary_data.extend(extract_metrics(adaptive_df, method_name))
             if verbose:
-                print(f"  Rolling SHAP ({name}): {len(rolling_df)} windows")
+                print(f"  Adaptive SHAP ({name}): {len(adaptive_df)} windows")
 
     # Process Adaptive SHAP
     adaptive_path = os.path.join(output_dir, 'adaptive_shap_results.csv')

@@ -6,14 +6,11 @@ Creates 6 different datasets with various non-stationary characteristics:
 2. arx_rotating - ARX with rotating covariate drivers
 3. trend_season - Trend + seasonality + AR break
 4. spike_process - Jump/spike regime with changing covariate role
-5. tvp_arx - Smooth time-varying parameter ARX
-6. garch_regime - GARCH returns with regime-shifting factor loadings
-7. cointegration - Cointegration that breaks
+5. garch_regime - GARCH returns with regime-shifting factor loadings
 """
 
 import numpy as np
 import pandas as pd
-import os
 from pathlib import Path
 
 
@@ -251,47 +248,6 @@ def sim_spike_process(T=1500, p=3, seed=2,
     return Y, Z, true_imp
 
 
-def sim_tvp_arx(T=1500, p=3, seed=3, noise_sigma=0.4):
-    rng = np.random.default_rng(seed)
-    t = np.arange(T)
-
-    # covariates
-    Z1 = rng.normal(0, 1.0, size=T)
-    Z2 = rng.normal(0, 1.0, size=T)
-    Z = np.vstack([Z1, Z2]).T
-
-    # smoothly changing coefficients
-    phi_t = np.zeros((T, p))
-    beta_t = np.zeros((T, 2))
-    for tt in range(T):
-        phi_t[tt] = np.array([
-            0.7 + 0.2*np.sin(2*np.pi*tt/T),
-            0.1 + 0.1*np.cos(2*np.pi*tt/T),
-            0.05
-        ])
-        beta_t[tt] = np.array([
-            1.0 + 0.8*np.cos(2*np.pi*tt/T),
-            0.2 + 0.8*np.sin(2*np.pi*tt/T)
-        ])
-
-    Y = np.zeros(T)
-    eps = rng.normal(0, noise_sigma, size=T)
-    for tt in range(T):
-        ar_part = 0.0
-        for j in range(1, p+1):
-            if tt-j >= 0:
-                ar_part += phi_t[tt, j-1]*Y[tt-j]
-        Y[tt] = ar_part + Z[tt] @ beta_t[tt] + eps[tt]
-
-    # true importance per t
-    true_imp = np.zeros((T, p+2))
-    sig_Z = Z.std(axis=0)
-    for tt in range(T):
-        coefs = np.concatenate([phi_t[tt], beta_t[tt]])
-        sigmas = np.concatenate([np.ones(p), sig_Z])
-        true_imp[tt] = _std_importance(coefs, sigmas)
-
-    return Y, Z, true_imp
 
 
 def sim_regime_garch_factors(T=1500, seed=4,
@@ -340,77 +296,6 @@ def sim_regime_garch_factors(T=1500, seed=4,
         true_imp[tt] = _std_importance(betas[k], sig_Z)
 
     return r, Z, true_imp
-
-
-def sim_cointegration_break(T=1500, seed=5,
-                            regime_lengths=(750, 750),
-                            noise_sigma=0.3):
-    """
-    Multivariate cointegration with regime break.
-    Y depends on 4 covariates: 2 important (X1, X2), 2 noise (X3, X4).
-    Coefficients change across regimes to test SHAP's ability to identify
-    which variables matter.
-
-    Regime 1: X1 and X2 both important, X3/X4 are noise
-    Regime 2: Only X1 matters strongly, X2 weakens, X3/X4 remain noise
-    """
-    rng = np.random.default_rng(seed)
-    t = np.arange(T)
-
-    # Driver series (random walks)
-    X1 = np.zeros(T)
-    X2 = np.zeros(T)
-    X1_eps = rng.normal(0, 0.25, size=T)
-    X2_eps = rng.normal(0, 0.20, size=T)
-    for tt in range(1, T):
-        X1[tt] = X1[tt-1] + X1_eps[tt]
-        X2[tt] = X2[tt-1] + X2_eps[tt]
-
-    # Noise covariates (white noise, not cointegrated)
-    X3 = rng.normal(0, 0.5, size=T)
-    X4 = rng.normal(0, 0.5, size=T)
-
-    # Regime-specific coefficients: [β1, β2, β3, β4]
-    betas = [
-        np.array([1.2, 0.8, 0.05, -0.05]),  # Regime 1: X1 and X2 matter, X3/X4 noise
-        np.array([1.5, 0.2, 0.05, -0.05])   # Regime 2: X1 dominates, X2 weakens
-    ]
-
-    # Error term dynamics (AR(1))
-    rhos = [0.5, 0.98]    # error stationary -> near-unit-root
-
-    reg_idx = np.zeros(T, dtype=int)
-    start = 0
-    for k, L in enumerate(regime_lengths):
-        reg_idx[start:start+L] = k
-        start += L
-
-    u = np.zeros(T)
-    e = rng.normal(0, noise_sigma, size=T)
-    Y = np.zeros(T)
-
-    # Build covariate matrix
-    Z = np.column_stack([X1, X2, X3, X4])  # [T, 4]
-
-    for tt in range(T):
-        k = reg_idx[tt]
-        if tt > 0:
-            u[tt] = rhos[k]*u[tt-1] + e[tt]
-        else:
-            u[tt] = e[tt]
-        Y[tt] = Z[tt] @ betas[k] + u[tt]
-
-    # True importances: standardized absolute importance
-    true_imp = np.zeros((T, 4))
-    for tt in range(T):
-        k = reg_idx[tt]
-        # Compute standardized importance based on coefficient magnitude
-        sig_Z = Z.std(axis=0)
-        abs_contrib = np.abs(betas[k]) * sig_Z
-        true_imp[tt] = abs_contrib / abs_contrib.sum()
-
-    return Y, Z, true_imp
-
 
 def save_dataset(name, Y, Z, true_imp, output_dir="examples/datasets/simulated"):
     """Save a dataset to CSV files."""
@@ -467,20 +352,10 @@ if __name__ == "__main__":
     Y, Z, true_imp = sim_spike_process(T=T, seed=2)
     save_dataset("spike_process", Y, Z, true_imp)
 
-    # 5. Time-varying parameter ARX
-    print("\n5. Generating tvp_arx...")
-    Y, Z, true_imp = sim_tvp_arx(T=T, seed=3)
-    save_dataset("tvp_arx", Y, Z, true_imp)
-
-    # 6. GARCH with regime-shifting factors
+    # 5. GARCH with regime-shifting factors
     print("\n6. Generating garch_regime...")
     Y, Z, true_imp = sim_regime_garch_factors(T=T, seed=4)
     save_dataset("garch_regime", Y, Z, true_imp)
-
-    # 7. Cointegration break
-    print("\n7. Generating cointegration...")
-    Y, Z, true_imp = sim_cointegration_break(T=T, seed=5)
-    save_dataset("cointegration", Y, Z, true_imp)
 
     print("\n" + "="*60)
     print("All datasets generated successfully!")

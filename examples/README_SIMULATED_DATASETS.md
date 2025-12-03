@@ -15,9 +15,9 @@ All datasets have 1500 time points with piecewise stationary regimes or smoothly
 $$X_t = \phi_1^{(k)} X_{t-1} + \phi_2^{(k)} X_{t-2} + \phi_3^{(k)} X_{t-3} + \varepsilon_t, \quad \varepsilon_t \sim \mathcal{N}(0, \sigma^2)$$
 
 **Regime-specific coefficients:**
-- Regime 1 (t=1..500): $\boldsymbol{\phi}^{(1)} = [0.9, 0.01, 0.01]$ (lag-1 dominates)
-- Regime 2 (t=501..1000): $\boldsymbol{\phi}^{(2)} = [0.01, 0.9, 0.01]$ (lag-2 dominates)
-- Regime 3 (t=1001..1500): $\boldsymbol{\phi}^{(3)} = [0.01, 0.01, 0.9]$ (lag-3 dominates)
+- Regime 1 (t=1..500): ${\phi}^{(1)} = [0.9, 0.01, 0.01]$ (lag-1 dominates)
+- Regime 2 (t=501..1000): ${\phi}^{(2)} = [0.01, 0.9, 0.01]$ (lag-2 dominates)
+- Regime 3 (t=1001..1500): ${\phi}^{(3)} = [0.01, 0.01, 0.9]$ (lag-3 dominates)
 
 **True importances:** 3 lag features, normalized as $\text{Imp}_j^{(k)} = |\phi_j^{(k)}| / \sum_{i=1}^3 |\phi_i^{(k)}|$
 
@@ -31,10 +31,10 @@ $$X_t = \phi_1^{(k)} X_{t-1} + \phi_2^{(k)} X_{t-2} + \phi_3^{(k)} X_{t-3} + \va
 $$Y_t = \sum_{j=1}^3 \phi_j Y_{t-j} + \beta_1^{(k)} D_t + \beta_2^{(k)} F_t + \beta_3^{(k)} R_t + \varepsilon_t, \quad \varepsilon_t \sim \mathcal{N}(0, \sigma^2)$$
 
 **Coefficients:**
-- AR lags: $\boldsymbol{\phi} = [0.6, 0.2, 0.1]$ (fixed across regimes)
-- Regime 1 (t=1..500): $\boldsymbol{\beta}^{(1)} = [0.2, 1.2, -0.1]$ (fuel dominates)
-- Regime 2 (t=501..1000): $\boldsymbol{\beta}^{(2)} = [1.2, 0.2, -0.1]$ (demand dominates)
-- Regime 3 (t=1001..1500): $\boldsymbol{\beta}^{(3)} = [0.2, 0.1, -1.2]$ (renewables dominate)
+- AR lags: ${\phi} = [0.6, 0.2, 0.1]$ (fixed across regimes)
+- Regime 1 (t=1..500): ${\beta}^{(1)} = [0.2, 1.2, -0.1]$ (fuel dominates)
+- Regime 2 (t=501..1000): ${\beta}^{(2)} = [1.2, 0.2, -0.1]$ (demand dominates)
+- Regime 3 (t=1001..1500): ${\beta}^{(3)} = [0.2, 0.1, -1.2]$ (renewables dominate)
 
 **Covariates:**
 - $D_t \sim \mathcal{N}(0, 1) + 0.3\sin(2\pi t/24)$ (demand with daily cycle)
@@ -74,34 +74,14 @@ where:
 - Spike size: $S_t \sim \text{LogNormal}(1.0, 0.6)$
 
 **Regime-specific spike drivers:**
-- Regime 1 (t=1..750): $\boldsymbol{\gamma}^{(1)} = [1.5, 0.0]$ (demand-driven spikes)
-- Regime 2 (t=751..1500): $\boldsymbol{\gamma}^{(2)} = [0.0, 1.5]$ (renewables-driven spikes)
+- Regime 1 (t=1..750): ${\gamma}^{(1)} = [1.5, 0.0]$ (demand-driven spikes)
+- Regime 2 (t=751..1500): ${\gamma}^{(2)} = [0.0, 1.5]$ (renewables-driven spikes)
 
 **True importances:** 5 features (3 AR lags + 2 covariates through spike probability)
 
 ---
 
-### 5. Time-Varying Parameter ARX (TVP-ARX)
-
-**Description:** ARX model with smoothly time-varying coefficients following sinusoidal patterns.
-
-**Mathematical Formulation:**
-$$Y_t = \sum_{j=1}^3 \phi_j(t) Y_{t-j} + \beta_1(t) Z_{1,t} + \beta_2(t) Z_{2,t} + \varepsilon_t$$
-
-**Time-varying coefficients:**
-- $\phi_1(t) = 0.7 + 0.2\sin(2\pi t/T)$
-- $\phi_2(t) = 0.1 + 0.1\cos(2\pi t/T)$
-- $\phi_3(t) = 0.05$ (constant)
-- $\beta_1(t) = 1.0 + 0.8\cos(2\pi t/T)$
-- $\beta_2(t) = 0.2 + 0.8\sin(2\pi t/T)$
-
-**Covariates:** $Z_{1,t}, Z_{2,t} \sim \mathcal{N}(0, 1)$ (i.i.d.)
-
-**True importances:** 5 features (3 lags + 2 covariates), varying smoothly over time
-
----
-
-### 6. GARCH Returns - Regime-Shifting Factor Loadings
+### 5. GARCH Returns - Regime-Shifting Factor Loadings
 
 **Description:** Asset returns with GARCH volatility and regime-dependent factor exposures.
 
@@ -113,10 +93,10 @@ $$h_t = \omega^{(k)} + \alpha^{(k)} \eta_{t-1}^2 + \beta^{(k)} h_{t-1}$$
 
 **Regime-specific parameters:**
 - Regime 1 (calm, t=1..750):
-  - Factor loadings: $\boldsymbol{\beta}^{(1)} = [1.2, 0.2]$ (market-driven)
+  - Factor loadings: ${\beta}^{(1)} = [1.2, 0.2]$ (market-driven)
   - GARCH: $(\omega, \alpha, \beta) = (0.02, 0.05, 0.9)$
 - Regime 2 (crisis, t=751..1500):
-  - Factor loadings: $\boldsymbol{\beta}^{(2)} = [0.3, 1.2]$ (volatility-driven)
+  - Factor loadings: ${\beta}^{(2)} = [0.3, 1.2]$ (volatility-driven)
   - GARCH: $(\omega, \alpha, \beta) = (0.05, 0.12, 0.85)$
 
 **Factors:** $M_t$ (market), $V_t$ (volatility risk) $\sim \mathcal{N}(0, 1)$
@@ -124,25 +104,6 @@ $$h_t = \omega^{(k)} + \alpha^{(k)} \eta_{t-1}^2 + \beta^{(k)} h_{t-1}$$
 **True importances:** 2 factor features
 
 ---
-
-### 7. Cointegration Break
-
-**Description:** Multivariate cointegration with regime-dependent coupling strength.
-
-**Mathematical Formulation:**
-$$Y_t = \beta_1^{(k)} X_{1,t} + \beta_2^{(k)} X_{2,t} + \beta_3^{(k)} X_{3,t} + \beta_4^{(k)} X_{4,t} + u_t$$
-$$u_t = \rho^{(k)} u_{t-1} + e_t, \quad e_t \sim \mathcal{N}(0, \sigma^2)$$
-
-**Driving processes (random walks):**
-- $X_{1,t} = X_{1,t-1} + \varepsilon_{1,t}$, $\varepsilon_{1,t} \sim \mathcal{N}(0, 0.25)$
-- $X_{2,t} = X_{2,t-1} + \varepsilon_{2,t}$, $\varepsilon_{2,t} \sim \mathcal{N}(0, 0.20)$
-- $X_{3,t}, X_{4,t} \sim \mathcal{N}(0, 0.5)$ (white noise, not cointegrated)
-
-**Regime-specific coefficients:**
-- Regime 1 (t=1..750): $\boldsymbol{\beta}^{(1)} = [1.2, 0.8, 0.05, -0.05]$, $\rho^{(1)} = 0.5$ (strong cointegration)
-- Regime 2 (t=751..1500): $\boldsymbol{\beta}^{(2)} = [1.5, 0.2, 0.05, -0.05]$, $\rho^{(2)} = 0.98$ (weak cointegration)
-
-**True importances:** 4 covariate features
 
 ## Evaluation Metrics
 
@@ -172,7 +133,7 @@ This ensures $\sum_{j=1}^d \text{Imp}_j = 1$ and all importances are non-negativ
 
 **Definition:** For simulated datasets where true data-generating process is known, true importance is computed from the standardized absolute coefficients.
 
-**For AR/ARX models with coefficients $\boldsymbol{\theta} = [\phi_1, \ldots, \phi_p, \beta_1, \ldots, \beta_k]$:**
+**For AR/ARX models with coefficients ${\theta} = [\phi_1, \ldots, \phi_p, \beta_1, \ldots, \beta_k]$:**
 
 $$\text{TrueImp}_j = \frac{|\theta_j| \cdot \sigma_j}{\sum_{i=1}^{p+k} |\theta_i| \cdot \sigma_i}$$
 
