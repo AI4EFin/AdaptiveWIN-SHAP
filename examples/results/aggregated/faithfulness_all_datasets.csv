@@ -1,36 +1,36 @@
 dataset,method,faithfulness_prtb
-piecewise_ar3,Vanilla SHAP,1.5380219785408251
-piecewise_ar3,TimeShap,1.160057070110747
-piecewise_ar3,Rolling SHAP,1.140939647390374
-piecewise_ar3,Adaptive (Max),2.206027917463336
-piecewise_ar3,Adaptive (Mean),2.0749973407112616
-piecewise_ar3,Adaptive SHAP,1.915591931051426
-piecewise_ar3,Adaptive (Smoothed),1.9194555395172688
-arx_rotating,Vanilla SHAP,0.0738659923872552
-arx_rotating,TimeShap,0.2941281170489076
-arx_rotating,Rolling SHAP,0.2614022477742816
-arx_rotating,Adaptive (Max),0.038418905674471
-arx_rotating,Adaptive (Mean),0.0414786776182827
-arx_rotating,Adaptive SHAP,0.0944105887022827
-arx_rotating,Adaptive (Smoothed),0.089623912452218
-trend_season,Vanilla SHAP,0.8907511010666489
-trend_season,TimeShap,0.6007302171023751
-trend_season,Rolling SHAP,0.3960720573418906
-trend_season,Adaptive (Max),1.3117130928230707
-trend_season,Adaptive (Mean),1.122968925752786
-trend_season,Adaptive SHAP,1.0413082017449435
-trend_season,Adaptive (Smoothed),1.0614086921981916
-spike_process,Vanilla SHAP,0.1144897511344634
-spike_process,TimeShap,0.3229341660498697
-spike_process,Rolling SHAP,0.1456529163382947
-spike_process,Adaptive (Max),0.1924170584776638
-spike_process,Adaptive (Mean),0.1742391743024321
-spike_process,Adaptive SHAP,0.209553990190825
-spike_process,Adaptive (Smoothed),0.2086012226566125
-garch_regime,Vanilla SHAP,0.0563792334801161
-garch_regime,TimeShap,0.0415996505671973
-garch_regime,Rolling SHAP,0.0992429536514516
-garch_regime,Adaptive (Max),0.072680607405473
-garch_regime,Adaptive (Mean),0.0833001200943999
-garch_regime,Adaptive SHAP,0.114910451311362
-garch_regime,Adaptive (Smoothed),0.1151871210400888
+piecewise_ar3,Vanilla SHAP,1.6672152056045826
+piecewise_ar3,TimeShap,1.249261883865736
+piecewise_ar3,Rolling SHAP,1.372641881246652
+piecewise_ar3,Adaptive (Max),2.2304280590912016
+piecewise_ar3,Adaptive (Mean),2.2478294324915025
+piecewise_ar3,Adaptive SHAP,2.043815735023302
+piecewise_ar3,Adaptive (Smoothed),2.048488737225194
+arx_rotating,Vanilla SHAP,0.1401256736649141
+arx_rotating,TimeShap,0.2662684475939594
+arx_rotating,Rolling SHAP,0.4041984746764813
+arx_rotating,Adaptive (Max),0.0715886445824765
+arx_rotating,Adaptive (Mean),0.0786503879870805
+arx_rotating,Adaptive SHAP,0.1855157574734531
+arx_rotating,Adaptive (Smoothed),0.1760658381547861
+trend_season,Vanilla SHAP,1.165353677863269
+trend_season,TimeShap,0.7578105241378785
+trend_season,Rolling SHAP,0.6068913034136806
+trend_season,Adaptive (Max),1.492849432947961
+trend_season,Adaptive (Mean),1.3507977745604594
+trend_season,Adaptive SHAP,1.2580982011431203
+trend_season,Adaptive (Smoothed),1.2833984241178216
+spike_process,Vanilla SHAP,0.2612150861230307
+spike_process,TimeShap,0.2987532673245601
+spike_process,Rolling SHAP,0.2135292009131184
+spike_process,Adaptive (Max),0.2749665162892077
+spike_process,Adaptive (Mean),0.2574185211507608
+spike_process,Adaptive SHAP,0.2945765200666411
+spike_process,Adaptive (Smoothed),0.2923917341056611
+garch_regime,Vanilla SHAP,0.0380332546036508
+garch_regime,TimeShap,0.0468803305052135
+garch_regime,Rolling SHAP,0.0988934753821896
+garch_regime,Adaptive (Max),0.0724036589877295
+garch_regime,Adaptive (Mean),0.0858258142897896
+garch_regime,Adaptive SHAP,0.1134443776576398
+garch_regime,Adaptive (Smoothed),0.1167348179314222

@@ -44,7 +44,7 @@ METHODS = {
 }
 
 # Metric configurations
-PERCENTILE = 'p90'  # Use p90 for all metrics
+PERCENTILE = 'p50'  # Use p90 for all metrics
 
 
 def compute_correlation_with_true_importance(method_df, true_imp_df, dataset_name):
@@ -92,6 +92,11 @@ def compute_correlation_with_true_importance(method_df, true_imp_df, dataset_nam
         true_feat = true_feat[valid_mask]
 
         if len(shap_feat) >= 2:
+            # Check for zero variance before computing correlation
+            if np.std(true_feat) == 0 or np.std(shap_feat) == 0:
+                # One or both arrays are constant - skip this feature
+                continue
+
             pearson_feat, _ = pearsonr(shap_feat, true_feat)
             spearman_feat, _ = spearmanr(shap_feat, true_feat)
 
@@ -411,29 +416,18 @@ def plot_aggregated_metrics(faithfulness_df, ablation_df, correlation_df, output
 
     # 3. Correlation comparison
     if len(correlation_df) > 0:
-        fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+        fig, ax = plt.subplots(1, 1, figsize=(10, 5))
 
         # Pearson
         corr_pearson_pivot = correlation_df.pivot(index='dataset', columns='method', values='pearson')
         corr_pearson_mean = corr_pearson_pivot.mean().sort_values(ascending=False)
 
-        axes[0].barh(range(len(corr_pearson_mean)), corr_pearson_mean.values)
-        axes[0].set_yticks(range(len(corr_pearson_mean)))
-        axes[0].set_yticklabels(corr_pearson_mean.index)
-        axes[0].set_xlabel('Mean |Pearson Correlation|')
-        axes[0].set_title('Absolute Correlation with True Importance (Pearson)')
-        axes[0].grid(axis='x', alpha=0.3)
-
-        # Spearman
-        corr_spearman_pivot = correlation_df.pivot(index='dataset', columns='method', values='spearman')
-        corr_spearman_mean = corr_spearman_pivot.mean().sort_values(ascending=False)
-
-        axes[1].barh(range(len(corr_spearman_mean)), corr_spearman_mean.values)
-        axes[1].set_yticks(range(len(corr_spearman_mean)))
-        axes[1].set_yticklabels(corr_spearman_mean.index)
-        axes[1].set_xlabel('Mean |Spearman Correlation|')
-        axes[1].set_title('Absolute Correlation with True Importance (Spearman)')
-        axes[1].grid(axis='x', alpha=0.3)
+        ax.barh(range(len(corr_pearson_mean)), corr_pearson_mean.values)
+        ax.set_yticks(range(len(corr_pearson_mean)))
+        ax.set_yticklabels(corr_pearson_mean.index)
+        ax.set_xlabel('Mean |Pearson Correlation|')
+        ax.set_title('Absolute Correlation with True Importance (Pearson)')
+        ax.grid(axis='x', alpha=0.3)
 
         plt.tight_layout()
         plt.savefig(os.path.join(output_dir, 'correlation_comparison.png'), bbox_inches='tight', dpi=300)
@@ -465,11 +459,11 @@ def plot_aggregated_metrics(faithfulness_df, ablation_df, correlation_df, output
     # Correlation
     if len(correlation_df) > 0:
         ax3 = fig.add_subplot(gs[1, :])
-        corr_mean = correlation_df.groupby('method')[['pearson', 'spearman']].mean()
+        corr_mean = correlation_df.groupby('method')[['pearson']].mean()
         corr_mean.plot(kind='barh', ax=ax3)
         ax3.set_xlabel('Mean |Correlation|')
         ax3.set_title('Absolute Correlation with True Importance')
-        ax3.legend(['|Pearson|', '|Spearman|'], loc='best')
+        ax3.legend(['|Pearson|'], loc='best')
         ax3.grid(axis='x', alpha=0.3)
 
     plt.savefig(os.path.join(output_dir, 'combined_dashboard.png'), bbox_inches='tight', dpi=300)
@@ -504,19 +498,13 @@ def plot_aggregated_metrics(faithfulness_df, ablation_df, correlation_df, output
 
     # 6. Correlation heatmap (if available)
     if len(correlation_df) > 0:
-        fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+        fig, ax = plt.subplots(1, 1, figsize=(10, 6))
 
         corr_pearson_pivot = correlation_df.pivot(index='dataset', columns='method', values='pearson')
-        sns.heatmap(corr_pearson_pivot, annot=True, fmt='.3f', cmap='RdYlGn', ax=axes[0],
+        sns.heatmap(corr_pearson_pivot, annot=True, fmt='.3f', cmap='RdYlGn', ax=ax,
                    cbar_kws={'label': '|Correlation|'}, vmin=0, vmax=1)
-        axes[0].set_title('Absolute Pearson Correlation with True Importance - Higher is Better')
-        axes[0].set_xlabel('')
-
-        corr_spearman_pivot = correlation_df.pivot(index='dataset', columns='method', values='spearman')
-        sns.heatmap(corr_spearman_pivot, annot=True, fmt='.3f', cmap='RdYlGn', ax=axes[1],
-                   cbar_kws={'label': '|Correlation|'}, vmin=0, vmax=1)
-        axes[1].set_title('Absolute Spearman Correlation with True Importance - Higher is Better')
-        axes[1].set_xlabel('')
+        ax.set_title('Absolute Pearson Correlation with True Importance - Higher is Better')
+        ax.set_xlabel('')
 
         plt.tight_layout()
         plt.savefig(os.path.join(output_dir, 'correlation_heatmap.png'), bbox_inches='tight', dpi=300)

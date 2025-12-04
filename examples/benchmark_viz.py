@@ -107,11 +107,11 @@ def plot_faithfulness_comparison(data, save_dir):
         print("No faithfulness metrics found in summary - skipping faithfulness comparison")
         return
 
-    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
     fig.suptitle('Faithfulness Comparison Across Methods', fontsize=14, fontweight='bold')
 
     eval_types = ['prtb']
-    percentiles = ['p90', 'p70', 'p50']
+    percentiles = ['p90', 'p50']
 
     for i, eval_type in enumerate(eval_types):
         for j, percentile in enumerate(percentiles):
@@ -194,11 +194,11 @@ def plot_ablation_comparison(data, save_dir):
         print("No ablation metrics found in summary - skipping ablation comparison")
         return
 
-    fig, axes = plt.subplots(2, 3, figsize=(18, 10))
+    fig, axes = plt.subplots(2, 2, figsize=(12, 10))
     fig.suptitle('Ablation Score Comparison Across Methods', fontsize=14, fontweight='bold')
 
     ablation_types = ['mif', 'lif']
-    percentiles = ['p90', 'p70', 'p50']
+    percentiles = ['p90', 'p50']
 
     for i, ablation_type in enumerate(ablation_types):
         for j, percentile in enumerate(percentiles):
@@ -280,11 +280,11 @@ def plot_ablation_mif_vs_lif(data, save_dir):
         print("No ablation metrics found - skipping MIF vs LIF comparison")
         return
 
-    fig, axes = plt.subplots(1, 3, figsize=(20, 6))
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
     fig.suptitle('MIF vs LIF Ablation Comparison (Higher MIF/LIF ratio = Better)',
                  fontsize=14, fontweight='bold')
 
-    percentiles = ['p90', 'p70', 'p50']
+    percentiles = ['p90', 'p50']
     color_map = {
         'global_shap': '#1f77b4',
         'timeshap': '#e377c2',
@@ -343,7 +343,6 @@ def plot_ablation_mif_vs_lif(data, save_dir):
             bars2 = ax.bar(x + width/2, lif_scores, width, label='LIF (Least Important First)',
                           color=colors, alpha=0.4, edgecolor='black', hatch='//')
 
-            ax.set_xlabel('Method')
             ax.set_ylabel('Ablation Score')
             ax.set_title(f'Percentile: {percentile.upper()}')
             ax.set_xticks(x)
@@ -556,7 +555,10 @@ def plot_prediction_comparison(data, save_dir):
             ax.set_ylim(lims)
 
             # Calculate correlation
-            corr = np.corrcoef(merged['y_hat_1'], merged['y_hat_2'])[0, 1]
+            if np.std(merged['y_hat_1']) > 0 and np.std(merged['y_hat_2']) > 0:
+                corr = np.corrcoef(merged['y_hat_1'], merged['y_hat_2'])[0, 1]
+            else:
+                corr = 0.0
             ax.text(0.05, 0.95, f'r = {corr:.4f}',
                    transform=ax.transAxes,
                    verticalalignment='top',
@@ -629,11 +631,11 @@ def plot_window_size_analysis(data, save_dir):
 
 def plot_temporal_faithfulness(data, save_dir):
     """Plot faithfulness scores over time for each method."""
-    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
     fig.suptitle('Faithfulness Scores Over Time', fontsize=14, fontweight='bold')
 
     eval_types = ['prtb']
-    percentiles = ['p90', 'p70', 'p50']
+    percentiles = ['p90', 'p50']
 
     # Store handles and labels for shared legend
     handles, labels = None, None
@@ -688,11 +690,11 @@ def plot_temporal_faithfulness(data, save_dir):
 
 def plot_temporal_ablation(data, save_dir):
     """Plot ablation scores over time for each method."""
-    fig, axes = plt.subplots(2, 3, figsize=(18, 10))
+    fig, axes = plt.subplots(2, 2, figsize=(12, 10))
     fig.suptitle('Ablation Scores Over Time', fontsize=14, fontweight='bold')
 
     ablation_types = ['mif', 'lif']
-    percentiles = ['p90', 'p70', 'p50']
+    percentiles = ['p90', 'p50']
 
     # Store handles and labels for shared legend
     handles, labels = None, None
@@ -1264,12 +1266,17 @@ def plot_correlation_with_true_importance(data, save_dir):
 
                 # Calculate correlation
                 if len(true_vals) == len(shap_vals_norm) and len(true_vals) > 0:
-                    corr = np.corrcoef(true_vals, shap_vals_norm)[0, 1]
-                    # Handle NaN correlations (can happen if variance is zero)
-                    if np.isnan(corr):
+                    # Check for zero variance before computing correlation
+                    if np.std(true_vals) == 0 or np.std(shap_vals_norm) == 0:
+                        # One or both arrays are constant - correlation is undefined
                         correlations.append(0.0)
                     else:
-                        correlations.append(corr)
+                        corr = np.corrcoef(true_vals, shap_vals_norm)[0, 1]
+                        # Handle NaN correlations (can happen if variance is zero)
+                        if np.isnan(corr):
+                            correlations.append(0.0)
+                        else:
+                            correlations.append(corr)
                 else:
                     # Length mismatch - append 0 to maintain alignment
                     correlations.append(0.0)
@@ -1607,7 +1614,10 @@ def plot_rolling_window_comparison(data, save_dir):
         ax5.set_xlim(lims)
         ax5.set_ylim(lims)
 
-        corr = np.corrcoef(merged['y_hat_1'], merged['y_hat_2'])[0, 1]
+        if np.std(merged['y_hat_1']) > 0 and np.std(merged['y_hat_2']) > 0:
+            corr = np.corrcoef(merged['y_hat_1'], merged['y_hat_2'])[0, 1]
+        else:
+            corr = 0.0
         ax5.text(0.05, 0.95, f'r = {corr:.4f}',
                 transform=ax5.transAxes, verticalalignment='top',
                 bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
@@ -1637,7 +1647,10 @@ def plot_rolling_window_comparison(data, save_dir):
         ax6.set_xlim(lims)
         ax6.set_ylim(lims)
 
-        corr = np.corrcoef(merged['y_hat_1'], merged['y_hat_3'])[0, 1]
+        if np.std(merged['y_hat_1']) > 0 and np.std(merged['y_hat_3']) > 0:
+            corr = np.corrcoef(merged['y_hat_1'], merged['y_hat_3'])[0, 1]
+        else:
+            corr = 0.0
         ax6.text(0.05, 0.95, f'r = {corr:.4f}',
                 transform=ax6.transAxes, verticalalignment='top',
                 bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
@@ -1666,7 +1679,10 @@ def plot_rolling_window_comparison(data, save_dir):
         ax7.set_xlim(lims)
         ax7.set_ylim(lims)
 
-        corr = np.corrcoef(merged['y_hat_2'], merged['y_hat_3'])[0, 1]
+        if np.std(merged['y_hat_2']) > 0 and np.std(merged['y_hat_3']) > 0:
+            corr = np.corrcoef(merged['y_hat_2'], merged['y_hat_3'])[0, 1]
+        else:
+            corr = 0.0
         ax7.text(0.05, 0.95, f'r = {corr:.4f}',
                 transform=ax7.transAxes, verticalalignment='top',
                 bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
@@ -1881,7 +1897,10 @@ def plot_residual_analysis(data, save_dir):
         ax.set_ylim(lims)
 
         # Calculate metrics
-        corr = np.corrcoef(df['y_true'], df['y_hat'])[0, 1]
+        if np.std(df['y_true']) > 0 and np.std(df['y_hat']) > 0:
+            corr = np.corrcoef(df['y_true'], df['y_hat'])[0, 1]
+        else:
+            corr = 0.0
         r2 = 1 - np.sum((df['y_true'] - df['y_hat'])**2) / np.sum((df['y_true'] - np.mean(df['y_true']))**2)
 
         ax.text(0.05, 0.95, f'r = {corr:.4f}\nR² = {r2:.4f}',

@@ -8,11 +8,11 @@ echo ""
 
 # Array of all datasets (matching run_all_simulations.sh)
 datasets=(
-    "piecewise_ar3"
-    #"arx_rotating"
-    #"trend_season"
-    #"spike_process"
-    #"garch_regime"
+    #"piecewise_ar3"
+    "arx_rotating"
+    "trend_season"
+    "spike_process"
+    "garch_regime"
 )
 
 # Configuration (matching run_all_simulations.sh)

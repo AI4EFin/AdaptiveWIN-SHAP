@@ -244,11 +244,11 @@ def run_benchmark(dataset_path, output_dir, device='cpu', verbose=True,
 
         if verbose:
             print("Training TimeShap model...")
-        timeshap_wrapper.fit(data, verbose=verbose)
+        timeshap_wrapper.fit(data, covariates=covariates, verbose=verbose)
 
         if verbose:
             print("Computing TimeShap explanations...")
-        timeshap_results = timeshap_wrapper.explain(data)
+        timeshap_results = timeshap_wrapper.explain(data, covariates=covariates)
         timeshap_results.to_csv(os.path.join(output_dir, 'timeshap_results.csv'), index=False)
 
         if verbose:

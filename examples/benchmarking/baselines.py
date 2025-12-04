@@ -594,14 +594,29 @@ class TimeShapWrapper:
         self.device = device
         self.model = None
         self.feature_names = None
+        self.n_features = 1  # Will be updated in fit() if covariates are provided
+        self.n_covariates = 0
+        self.X_train = None  # Will store training sequences for computing average event
 
-    def fit(self, data, verbose=False):
-        """Train a global model."""
-        X, y, feature_names = create_sequences(data, self.seq_length)
+    def fit(self, data, covariates=None, verbose=False):
+        """Train a global model on data + covariates."""
+        # Track number of features and covariates
+        if covariates is not None:
+            self.n_features = 1 + covariates.shape[1]
+            self.n_covariates = covariates.shape[1]
+        else:
+            self.n_features = 1
+            self.n_covariates = 0
+
+        # Create sequences with separate data and covariates
+        X, y, feature_names = create_sequences(data, self.seq_length, covariates=covariates)
         self.feature_names = feature_names
 
+        # Store training sequences for computing average event later
+        self.X_train = X
+
         self.model = LSTMModel(
-            input_size=1,
+            input_size=self.n_features,  # Updated to handle multivariate
             hidden_size=self.hidden_size,
             num_layers=self.num_layers,
             dropout=self.dropout,
@@ -619,22 +634,25 @@ class TimeShapWrapper:
 
         if verbose:
             print(f"TimeShap model trained. Final loss: {train_loss:.6f}")
+            if self.n_covariates > 0:
+                print(f"Model trained with {self.n_covariates} covariate(s)")
 
         return self
 
-    def explain(self, data, start_idx=None, end_idx=None):
+    def explain(self, data, covariates=None, start_idx=None, end_idx=None):
         """
         Compute TimeShap explanations using local explanations.
 
         Parameters
         ----------
         data : 1D array - full data series
+        covariates : 2D array - covariates [T, n_cov] (optional)
         start_idx : int - start index for explanation (default: 0)
         end_idx : int - end index for explanation (default: len(data))
 
         Returns
         -------
-        DataFrame with columns: end_index, y_true, y_hat, shap_lag_t-*, faithfulness_*, ablation_*
+        DataFrame with columns: end_index, y_true, y_hat, shap_lag_t-*, shap_Z_*, faithfulness_*, ablation_*
         """
         if self.model is None:
             raise ValueError("Model not trained. Call fit() first.")
@@ -643,8 +661,14 @@ class TimeShapWrapper:
         from timeshap.wrappers import TorchModelWrapper
         from timeshap.utils import calc_avg_event
 
-        # Create sequences
-        X, y, feature_names = create_sequences(data, self.seq_length)
+        # Track number of covariates
+        if covariates is not None:
+            n_cov = covariates.shape[1]
+        else:
+            n_cov = 0
+
+        # Create sequences with separate data and covariates
+        X, y, feature_names = create_sequences(data, self.seq_length, covariates=covariates)
 
         if start_idx is None:
             start_idx = 0
@@ -655,9 +679,15 @@ class TimeShapWrapper:
         model_wrapped = TorchModelWrapper(self.model)
         f_hs = lambda x, y=None: model_wrapped.predict_last_hs(x, y)
 
-        # Calculate average event (baseline) using all training data
-        # For simplicity, use mean of all features
-        average_event = np.mean(X, axis=(0, 1)).reshape(1, -1)
+        # Calculate average event (baseline) using TimeShap's utility function
+        # Convert training sequences to DataFrame format for calc_avg_event
+        # X_train shape: [N, seq_length, n_features]
+        # Reshape to [N * seq_length, n_features] and create DataFrame
+        X_train_flat = self.X_train.reshape(-1, self.n_features)
+        train_df = pd.DataFrame(X_train_flat, columns=self.feature_names)
+
+        # Use TimeShap's calc_avg_event to properly compute baseline
+        average_event = calc_avg_event(train_df, numerical_feats=self.feature_names, categorical_feats=[])
 
         # Process each sequence
         results = []
@@ -692,18 +722,49 @@ class TimeShapWrapper:
                     'y_hat': float(y_hat)
                 }
 
-                # Add SHAP values per timestep (lag features)
+                # Add SHAP values per timestep (lag features) - EVENT-LEVEL
                 # Assuming event_data has 'Shapley Value' column per event
                 for t in range(min(self.seq_length, len(event_data))):
                     event_shap = event_data.iloc[t]['Shapley Value'] if t < len(event_data) else 0.0
-                    result_row[f'shap_lag_t-{t+1}'] = float(event_shap)
+                    result_row[f'shap_lag_t-{t+1}'] = float(np.abs(event_shap))
 
                 # Pad with zeros if we have fewer events than seq_length
                 for t in range(len(event_data), self.seq_length):
                     result_row[f'shap_lag_t-{t+1}'] = 0.0
 
+                # Add SHAP values for covariates - FEATURE-LEVEL
+                if n_cov > 0:
+                    try:
+                        feature_dict = {
+                            'rs': 42,
+                            'nsamples': 1000,
+                            'feature_names': feature_names
+                        }
+                        feature_data = local_feat(
+                            f_hs, x_instance, feature_dict, f'instance_{i}', 'id',
+                            average_event, pruning_idx
+                        )
+
+                        # Extract covariate SHAP values
+                        for cov_idx in range(n_cov):
+                            # Feature names from create_sequences: ['lag_t-1', ..., 'Z_0', 'Z_1', ...]
+                            feat_name = f'Z_{cov_idx}'
+                            # Find this feature in the feature_data DataFrame
+                            feat_rows = feature_data[feature_data['Feature'] == feat_name]
+                            if len(feat_rows) > 0:
+                                shap_val = feat_rows['Shapley Value'].values[0]
+                            else:
+                                # If feature not found, use 0
+                                shap_val = 0.0
+                            result_row[f'shap_Z_{cov_idx}'] = float(np.abs(shap_val))
+                    except Exception as e:
+                        # If feature-level explanation fails, fill with zeros
+                        print(f"Warning: Feature-level explanation failed for instance {i}: {e}")
+                        for cov_idx in range(n_cov):
+                            result_row[f'shap_Z_{cov_idx}'] = 0.0
+
                 # Compute proper faithfulness and ablation metrics
-                # Extract SHAP values for this point
+                # Extract SHAP values for this point (already absolute from above)
                 shap_vals = np.array([result_row[f'shap_lag_t-{t+1}'] for t in range(self.seq_length)])
 
                 # Get input sequence for this point: X[i] has shape [seq_length, features]
@@ -737,9 +798,12 @@ class TimeShapWrapper:
                     'y_true': float(y[i]),
                     'y_hat': float(y_hat)
                 }
-                # Fill with zeros
+                # Fill lag SHAP values with zeros
                 for t in range(self.seq_length):
                     result_row[f'shap_lag_t-{t+1}'] = 0.0
+                # Fill covariate SHAP values with zeros
+                for cov_idx in range(n_cov):
+                    result_row[f'shap_Z_{cov_idx}'] = 0.0
                 # Fill faithfulness metrics with zeros for all percentiles
                 for p in [90, 70, 50]:
                     result_row[f'faithfulness_prtb_p{p}'] = 0.0
