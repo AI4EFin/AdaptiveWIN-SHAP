@@ -10,9 +10,9 @@ echo ""
 datasets=(
     #"piecewise_ar3"
     "arx_rotating"
-    "trend_season"
-    "spike_process"
-    "garch_regime"
+    #"trend_season"
+    #"spike_process"
+    #"garch_regime"
 )
 
 # Track results

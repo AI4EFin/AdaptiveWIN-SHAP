@@ -684,10 +684,14 @@ class TimeShapWrapper:
         # X_train shape: [N, seq_length, n_features]
         # Reshape to [N * seq_length, n_features] and create DataFrame
         X_train_flat = self.X_train.reshape(-1, self.n_features)
-        train_df = pd.DataFrame(X_train_flat, columns=self.feature_names)
+
+        # Feature names for flattened data: one 'lag' column + covariate columns
+        # (not temporal lag names like 'lag_t-1', 'lag_t-2', etc.)
+        flat_feature_names = ['lag'] + [f'Z_{i}' for i in range(self.n_covariates)]
+        train_df = pd.DataFrame(X_train_flat, columns=flat_feature_names)
 
         # Use TimeShap's calc_avg_event to properly compute baseline
-        average_event = calc_avg_event(train_df, numerical_feats=self.feature_names, categorical_feats=[])
+        average_event = calc_avg_event(train_df, numerical_feats=flat_feature_names, categorical_feats=[])
 
         # Process each sequence
         results = []
@@ -735,10 +739,15 @@ class TimeShapWrapper:
                 # Add SHAP values for covariates - FEATURE-LEVEL
                 if n_cov > 0:
                     try:
+                        # TimeShap expects feature_names to describe features at each timestep
+                        # (cross-sectional), not temporal dimension
+                        # Should be ['lag', 'Z_0', 'Z_1', ...] not ['lag_t-1', 'lag_t-2', ..., 'Z_0', 'Z_1', ...]
+                        flat_feature_names = ['lag'] + [f'Z_{i}' for i in range(self.n_covariates)]
+
                         feature_dict = {
                             'rs': 42,
                             'nsamples': 1000,
-                            'feature_names': feature_names
+                            'feature_names': flat_feature_names
                         }
                         feature_data = local_feat(
                             f_hs, x_instance, feature_dict, f'instance_{i}', 'id',
@@ -747,7 +756,6 @@ class TimeShapWrapper:
 
                         # Extract covariate SHAP values
                         for cov_idx in range(n_cov):
-                            # Feature names from create_sequences: ['lag_t-1', ..., 'Z_0', 'Z_1', ...]
                             feat_name = f'Z_{cov_idx}'
                             # Find this feature in the feature_data DataFrame
                             feat_rows = feature_data[feature_data['Feature'] == feat_name]

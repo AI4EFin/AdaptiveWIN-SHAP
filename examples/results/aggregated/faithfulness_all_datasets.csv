@@ -1,18 +1,18 @@
 dataset,method,faithfulness_prtb
-piecewise_ar3,Vanilla SHAP,1.6672152056045826
-piecewise_ar3,TimeShap,1.249261883865736
-piecewise_ar3,Rolling SHAP,1.372641881246652
-piecewise_ar3,Adaptive (Max),2.2304280590912016
-piecewise_ar3,Adaptive (Mean),2.2478294324915025
-piecewise_ar3,Adaptive SHAP,2.043815735023302
-piecewise_ar3,Adaptive (Smoothed),2.048488737225194
-arx_rotating,Vanilla SHAP,0.1401256736649141
-arx_rotating,TimeShap,0.2662684475939594
-arx_rotating,Rolling SHAP,0.4041984746764813
-arx_rotating,Adaptive (Max),0.0715886445824765
-arx_rotating,Adaptive (Mean),0.0786503879870805
-arx_rotating,Adaptive SHAP,0.1855157574734531
-arx_rotating,Adaptive (Smoothed),0.1760658381547861
+piecewise_ar3,Vanilla SHAP,1.6503484361545595
+piecewise_ar3,TimeShap,1.1554536374115354
+piecewise_ar3,Rolling SHAP,1.377360985598394
+piecewise_ar3,Adaptive (Max),2.285557680381298
+piecewise_ar3,Adaptive (Mean),2.270619559528309
+piecewise_ar3,Adaptive SHAP,2.0453002570606347
+piecewise_ar3,Adaptive (Smoothed),2.067591479586894
+arx_rotating,Vanilla SHAP,0.1325226183147054
+arx_rotating,TimeShap,0.2680996308873395
+arx_rotating,Rolling SHAP,0.4071937732771039
+arx_rotating,Adaptive (Max),0.0715193064364195
+arx_rotating,Adaptive (Mean),0.0807297642653186
+arx_rotating,Adaptive SHAP,0.1892455747163168
+arx_rotating,Adaptive (Smoothed),0.1822648567577442
 trend_season,Vanilla SHAP,1.165353677863269
 trend_season,TimeShap,0.7578105241378785
 trend_season,Rolling SHAP,0.6068913034136806

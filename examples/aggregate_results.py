@@ -355,7 +355,7 @@ def create_aggregated_tables(faithfulness_df, ablation_df, correlation_df, outpu
     return combined_agg, combined_mean
 
 
-def plot_aggregated_metrics(faithfulness_df, ablation_df, correlation_df, output_dir):
+def plot_aggregated_metrics(faithfulness_df, ablation_df, correlation_df, per_feature_corr_df, output_dir):
     """
     Create comparison plots for all methods across all datasets.
     """
@@ -366,53 +366,30 @@ def plot_aggregated_metrics(faithfulness_df, ablation_df, correlation_df, output
     print("="*60)
 
     # 1. Faithfulness comparison
-    fig, ax = plt.subplots(1, 1, figsize=(10, 5))
+    fig, axes = plt.subplots(1, 2, figsize=(16, 6))
 
-    # Faithfulness PRTB
+    # Faithfulness PRTB - Bar plot
     faith_prtb_pivot = faithfulness_df.pivot(index='dataset', columns='method', values='faithfulness_prtb')
     faith_prtb_mean = faith_prtb_pivot.mean().sort_values()
 
-    ax.barh(range(len(faith_prtb_mean)), faith_prtb_mean.values)
-    ax.set_yticks(range(len(faith_prtb_mean)))
-    ax.set_yticklabels(faith_prtb_mean.index)
-    ax.set_xlabel('Mean Faithfulness (PRTB)')
-    ax.set_title('Faithfulness - Perturbation')
-    ax.grid(axis='x', alpha=0.3)
+    axes[0].barh(range(len(faith_prtb_mean)), faith_prtb_mean.values)
+    axes[0].set_yticks(range(len(faith_prtb_mean)))
+    axes[0].set_yticklabels(faith_prtb_mean.index)
+    axes[0].set_xlabel('Mean Faithfulness')
+    axes[0].set_title('Faithfulness')
+
+    # Faithfulness PRTB - Heatmap
+    sns.heatmap(faith_prtb_pivot, annot=True, fmt='.3f', cmap='RdYlGn_r', ax=axes[1],
+               cbar_kws={'label': 'Faithfulness'})
+    axes[1].set_title('Faithfulness by Dataset')
+    axes[1].set_xlabel('')
 
     plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, 'faithfulness_comparison.png'), bbox_inches='tight', dpi=300)
+    plt.savefig(os.path.join(output_dir, 'faithfulness_comparison.png'), bbox_inches='tight', dpi=300, transparent=True)
     plt.close()
     print("  Saved: faithfulness_comparison.png")
 
-    # 2. Ablation comparison
-    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
-
-    # MIF
-    ablation_mif_pivot = ablation_df.pivot(index='dataset', columns='method', values='ablation_mif')
-    ablation_mif_mean = ablation_mif_pivot.mean().sort_values()
-
-    axes[0].barh(range(len(ablation_mif_mean)), ablation_mif_mean.values)
-    axes[0].set_yticks(range(len(ablation_mif_mean)))
-    axes[0].set_yticklabels(ablation_mif_mean.index)
-    axes[0].set_xlabel('Mean Ablation (MIF)')
-    axes[0].set_title('Most Important First (MIF)')
-    axes[0].grid(axis='x', alpha=0.3)
-
-    # LIF
-    ablation_lif_pivot = ablation_df.pivot(index='dataset', columns='method', values='ablation_lif')
-    ablation_lif_mean = ablation_lif_pivot.mean().sort_values()
-
-    axes[1].barh(range(len(ablation_lif_mean)), ablation_lif_mean.values)
-    axes[1].set_yticks(range(len(ablation_lif_mean)))
-    axes[1].set_yticklabels(ablation_lif_mean.index)
-    axes[1].set_xlabel('Mean Ablation (LIF)')
-    axes[1].set_title('Least Important First (LIF)')
-    axes[1].grid(axis='x', alpha=0.3)
-
-    plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, 'ablation_comparison.png'), bbox_inches='tight', dpi=300)
-    plt.close()
-    print("  Saved: ablation_comparison.png")
+    # 2. Ablation comparison - REMOVED
 
     # 3. Correlation comparison
     if len(correlation_df) > 0:
@@ -425,48 +402,62 @@ def plot_aggregated_metrics(faithfulness_df, ablation_df, correlation_df, output
         ax.barh(range(len(corr_pearson_mean)), corr_pearson_mean.values)
         ax.set_yticks(range(len(corr_pearson_mean)))
         ax.set_yticklabels(corr_pearson_mean.index)
-        ax.set_xlabel('Mean |Pearson Correlation|')
-        ax.set_title('Absolute Correlation with True Importance (Pearson)')
-        ax.grid(axis='x', alpha=0.3)
+        ax.set_xlabel('Mean Absolute Correlation')
+        ax.set_title('Absolute Correlation with True Importance')
 
         plt.tight_layout()
-        plt.savefig(os.path.join(output_dir, 'correlation_comparison.png'), bbox_inches='tight', dpi=300)
+        plt.savefig(os.path.join(output_dir, 'correlation_comparison.png'), bbox_inches='tight', dpi=300, transparent=True)
         plt.close()
         print("  Saved: correlation_comparison.png")
 
     # 4. Combined dashboard
     fig = plt.figure(figsize=(16, 10))
-    gs = fig.add_gridspec(2, 2, hspace=0.3, wspace=0.3)
+    gs = fig.add_gridspec(2, 2, hspace=0.35, wspace=0.3, bottom=0.1)
+
+    # Define distinct colors for each metric
+    colors = {
+        'faithfulness_prtb': '#3498db',  # Blue
+        'ablation_mif': '#e74c3c',       # Red
+        'ablation_lif': '#2ecc71',       # Green
+        'pearson': '#9b59b6'             # Purple
+    }
 
     # Faithfulness
     ax1 = fig.add_subplot(gs[0, 0])
     faith_mean = faithfulness_df.groupby('method')[['faithfulness_prtb']].mean()
-    faith_mean.plot(kind='barh', ax=ax1)
+    faith_mean.plot(kind='barh', ax=ax1, legend=False, color=[colors['faithfulness_prtb']])
     ax1.set_xlabel('Mean Score')
     ax1.set_title('Faithfulness Metrics')
-    ax1.legend(['PRTB'], loc='best')
-    ax1.grid(axis='x', alpha=0.3)
 
     # Ablation
     ax2 = fig.add_subplot(gs[0, 1])
     ablation_mean = ablation_df.groupby('method')[['ablation_mif', 'ablation_lif']].mean()
-    ablation_mean.plot(kind='barh', ax=ax2)
+    ablation_mean.plot(kind='barh', ax=ax2, legend=False,
+                      color=[colors['ablation_mif'], colors['ablation_lif']])
     ax2.set_xlabel('Mean Score')
     ax2.set_title('Ablation Metrics')
-    ax2.legend(['MIF', 'LIF'], loc='best')
-    ax2.grid(axis='x', alpha=0.3)
 
     # Correlation
     if len(correlation_df) > 0:
         ax3 = fig.add_subplot(gs[1, :])
         corr_mean = correlation_df.groupby('method')[['pearson']].mean()
-        corr_mean.plot(kind='barh', ax=ax3)
-        ax3.set_xlabel('Mean |Correlation|')
+        corr_mean.plot(kind='barh', ax=ax3, legend=False, color=[colors['pearson']])
+        ax3.set_xlabel('Mean Correlation')
         ax3.set_title('Absolute Correlation with True Importance')
-        ax3.legend(['|Pearson|'], loc='best')
-        ax3.grid(axis='x', alpha=0.3)
 
-    plt.savefig(os.path.join(output_dir, 'combined_dashboard.png'), bbox_inches='tight', dpi=300)
+    # Create combined legend at bottom center
+    handles, labels = [], []
+    # Collect handles and labels from all subplots
+    for ax in [ax1, ax2, ax3]:
+        h, l = ax.get_legend_handles_labels()
+        handles.extend(h)
+        labels.extend(l)
+
+    # Place legend at bottom center of the figure
+    fig.legend(handles, labels, loc='lower center', bbox_to_anchor=(0.5, 0.02),
+              ncol=4, frameon=False)
+
+    plt.savefig(os.path.join(output_dir, 'combined_dashboard.png'), bbox_inches='tight', dpi=300, transparent=True)
     plt.close()
     print("  Saved: combined_dashboard.png")
 
@@ -492,22 +483,39 @@ def plot_aggregated_metrics(faithfulness_df, ablation_df, correlation_df, output
     axes[2].set_xlabel('')
 
     plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, 'metrics_heatmap.png'), bbox_inches='tight', dpi=300)
+    plt.savefig(os.path.join(output_dir, 'metrics_heatmap.png'), bbox_inches='tight', dpi=300, transparent=True)
     plt.close()
     print("  Saved: metrics_heatmap.png")
 
-    # 6. Correlation heatmap (if available)
+    # 6. Correlation heatmaps (if available) - Overall and Per-Feature
     if len(correlation_df) > 0:
-        fig, ax = plt.subplots(1, 1, figsize=(10, 6))
+        # Create figure with 2 subplots side by side
+        fig, axes = plt.subplots(1, 2, figsize=(20, 6))
 
+        # Left: Overall correlation heatmap
         corr_pearson_pivot = correlation_df.pivot(index='dataset', columns='method', values='pearson')
-        sns.heatmap(corr_pearson_pivot, annot=True, fmt='.3f', cmap='RdYlGn', ax=ax,
-                   cbar_kws={'label': '|Correlation|'}, vmin=0, vmax=1)
-        ax.set_title('Absolute Pearson Correlation with True Importance - Higher is Better')
-        ax.set_xlabel('')
+        sns.heatmap(corr_pearson_pivot, annot=True, fmt='.3f', cmap='RdYlGn', ax=axes[0],
+                   cbar_kws={'label': 'Correlation'}, vmin=0, vmax=1)
+        axes[0].set_title('Overall: Absolute Pearson Correlation with True Importance')
+        axes[0].set_xlabel('')
+        axes[0].set_ylabel('Dataset')
+
+        # Right: Per-feature correlation heatmap (mean across datasets)
+        if len(per_feature_corr_df) > 0:
+            # Aggregate per-feature correlations across datasets (mean)
+            per_feature_pivot = per_feature_corr_df.groupby(['feature', 'method'])['pearson'].mean().unstack()
+            sns.heatmap(per_feature_pivot, annot=True, fmt='.3f', cmap='RdYlGn', ax=axes[1],
+                       cbar_kws={'label': 'Correlation'}, vmin=0, vmax=1)
+            axes[1].set_title('Per-Feature: Mean Absolute Correlation Across Datasets')
+            axes[1].set_xlabel('')
+            axes[1].set_ylabel('Feature')
+        else:
+            axes[1].text(0.5, 0.5, 'No per-feature data available',
+                        ha='center', va='center', transform=axes[1].transAxes)
+            axes[1].set_title('Per-Feature Correlation')
 
         plt.tight_layout()
-        plt.savefig(os.path.join(output_dir, 'correlation_heatmap.png'), bbox_inches='tight', dpi=300)
+        plt.savefig(os.path.join(output_dir, 'correlation_heatmap.png'), bbox_inches='tight', dpi=300, transparent=True)
         plt.close()
         print("  Saved: correlation_heatmap.png")
 
@@ -522,19 +530,18 @@ def plot_aggregated_metrics(faithfulness_df, ablation_df, correlation_df, output
     axes[0].set_yticks(range(len(ratio_mean)))
     axes[0].set_yticklabels(ratio_mean.index)
     axes[0].set_xlabel('Mean MIF/LIF Ratio')
-    axes[0].set_title('MIF/LIF Ratio - Higher is Better')
-    axes[0].grid(axis='x', alpha=0.3)
+    axes[0].set_title('MIF/LIF Ratio')
     axes[0].axvline(x=1, color='red', linestyle='--', linewidth=2, label='Baseline (ratio=1)')
-    axes[0].legend()
+    axes[0].legend(frameon=False)
 
     # Heatmap
     sns.heatmap(ratio_pivot, annot=True, fmt='.3f', cmap='RdYlGn', ax=axes[1],
                cbar_kws={'label': 'MIF/LIF Ratio'}, vmin=0.8, vmax=2.5, center=1.0)
-    axes[1].set_title('MIF/LIF Ratio by Dataset - Higher is Better')
+    axes[1].set_title('MIF/LIF Ratio by Dataset')
     axes[1].set_xlabel('')
 
     plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, 'mif_lif_ratio_comparison.png'), bbox_inches='tight', dpi=300)
+    plt.savefig(os.path.join(output_dir, 'mif_lif_ratio_comparison.png'), bbox_inches='tight', dpi=300, transparent=True)
     plt.close()
     print("  Saved: mif_lif_ratio_comparison.png")
 
@@ -568,7 +575,7 @@ def main():
     create_aggregated_tables(faithfulness_df, ablation_df, correlation_df, output_dir)
 
     # Create plots
-    plot_aggregated_metrics(faithfulness_df, ablation_df, correlation_df, output_dir)
+    plot_aggregated_metrics(faithfulness_df, ablation_df, correlation_df, per_feature_corr_df, output_dir)
 
     print("\n" + "="*60)
     print(f"Aggregation complete! Results saved to: {output_dir}")
