@@ -26,10 +26,10 @@ fi
 # Array of all datasets
 datasets=(
     "piecewise_ar3"
-#    "arx_rotating"
-#    "trend_season"
-#    "spike_process"
-#    "garch_regime"
+    "arx_rotating"
+    "trend_season"
+    "spike_process"
+    "garch_regime"
 )
 
 # Configuration (matching run_all_simulations.sh)

@@ -461,33 +461,7 @@ def plot_aggregated_metrics(faithfulness_df, ablation_df, correlation_df, per_fe
     plt.close()
     print("  Saved: combined_dashboard.png")
 
-    # 5. Heatmaps for each metric across datasets and methods
-    fig, axes = plt.subplots(1, 3, figsize=(18, 6))
-
-    # Faithfulness PRTB heatmap
-    faith_prtb_pivot = faithfulness_df.pivot(index='dataset', columns='method', values='faithfulness_prtb')
-    sns.heatmap(faith_prtb_pivot, annot=True, fmt='.3f', cmap='RdYlGn_r', ax=axes[0], cbar_kws={'label': 'Score'})
-    axes[0].set_title('Faithfulness (PRTB) - Lower is Better')
-    axes[0].set_xlabel('')
-
-    # Ablation MIF heatmap
-    ablation_mif_pivot = ablation_df.pivot(index='dataset', columns='method', values='ablation_mif')
-    sns.heatmap(ablation_mif_pivot, annot=True, fmt='.3f', cmap='RdYlGn_r', ax=axes[1], cbar_kws={'label': 'Score'})
-    axes[1].set_title('Ablation (MIF) - Lower is Better')
-    axes[1].set_xlabel('')
-
-    # Ablation LIF heatmap
-    ablation_lif_pivot = ablation_df.pivot(index='dataset', columns='method', values='ablation_lif')
-    sns.heatmap(ablation_lif_pivot, annot=True, fmt='.3f', cmap='RdYlGn_r', ax=axes[2], cbar_kws={'label': 'Score'})
-    axes[2].set_title('Ablation (LIF) - Lower is Better')
-    axes[2].set_xlabel('')
-
-    plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, 'metrics_heatmap.png'), bbox_inches='tight', dpi=300, transparent=True)
-    plt.close()
-    print("  Saved: metrics_heatmap.png")
-
-    # 6. Correlation heatmaps (if available) - Overall and Per-Feature
+    # 5. Correlation heatmaps (if available) - Overall and Per-Feature
     if len(correlation_df) > 0:
         # Create figure with 2 subplots side by side
         fig, axes = plt.subplots(1, 2, figsize=(20, 6))
@@ -591,10 +565,8 @@ def main():
     print("    - aggregated_metrics_mean.csv (includes MIF/LIF ratio)")
     print("\n  Plots:")
     print("    - faithfulness_comparison.png")
-    print("    - ablation_comparison.png")
     print("    - correlation_comparison.png")
     print("    - combined_dashboard.png")
-    print("    - metrics_heatmap.png")
     print("    - correlation_heatmap.png")
     print("    - mif_lif_ratio_comparison.png (CRITICAL METRIC)")
 

@@ -6,31 +6,31 @@ piecewise_ar3,Adaptive (Max),2.285557680381298
 piecewise_ar3,Adaptive (Mean),2.270619559528309
 piecewise_ar3,Adaptive SHAP,2.0453002570606347
 piecewise_ar3,Adaptive (Smoothed),2.067591479586894
-arx_rotating,Vanilla SHAP,0.1325226183147054
-arx_rotating,TimeShap,0.2680996308873395
-arx_rotating,Rolling SHAP,0.4071937732771039
-arx_rotating,Adaptive (Max),0.0715193064364195
-arx_rotating,Adaptive (Mean),0.0807297642653186
-arx_rotating,Adaptive SHAP,0.1892455747163168
-arx_rotating,Adaptive (Smoothed),0.1822648567577442
-trend_season,Vanilla SHAP,1.165353677863269
-trend_season,TimeShap,0.7578105241378785
-trend_season,Rolling SHAP,0.6068913034136806
-trend_season,Adaptive (Max),1.492849432947961
-trend_season,Adaptive (Mean),1.3507977745604594
-trend_season,Adaptive SHAP,1.2580982011431203
-trend_season,Adaptive (Smoothed),1.2833984241178216
-spike_process,Vanilla SHAP,0.2612150861230307
-spike_process,TimeShap,0.2987532673245601
-spike_process,Rolling SHAP,0.2135292009131184
-spike_process,Adaptive (Max),0.2749665162892077
-spike_process,Adaptive (Mean),0.2574185211507608
-spike_process,Adaptive SHAP,0.2945765200666411
-spike_process,Adaptive (Smoothed),0.2923917341056611
-garch_regime,Vanilla SHAP,0.0380332546036508
-garch_regime,TimeShap,0.0468803305052135
-garch_regime,Rolling SHAP,0.0988934753821896
-garch_regime,Adaptive (Max),0.0724036589877295
-garch_regime,Adaptive (Mean),0.0858258142897896
-garch_regime,Adaptive SHAP,0.1134443776576398
-garch_regime,Adaptive (Smoothed),0.1167348179314222
+arx_rotating,Vanilla SHAP,0.1587620832439096
+arx_rotating,TimeShap,0.3145166049918574
+arx_rotating,Rolling SHAP,0.3997893142114792
+arx_rotating,Adaptive (Max),0.0666502504951535
+arx_rotating,Adaptive (Mean),0.082419585948235
+arx_rotating,Adaptive SHAP,0.1867851693364844
+arx_rotating,Adaptive (Smoothed),0.1853630314335356
+trend_season,Vanilla SHAP,1.193580296151863
+trend_season,TimeShap,0.8374430450773191
+trend_season,Rolling SHAP,0.6012752730665463
+trend_season,Adaptive (Max),1.48638980022133
+trend_season,Adaptive (Mean),1.3640738390597769
+trend_season,Adaptive SHAP,1.2531301847838845
+trend_season,Adaptive (Smoothed),1.269153007574295
+spike_process,Vanilla SHAP,0.2745522716758883
+spike_process,TimeShap,0.2953792983938553
+spike_process,Rolling SHAP,0.2131986123802406
+spike_process,Adaptive (Max),0.2782665537489063
+spike_process,Adaptive (Mean),0.2484041630868986
+spike_process,Adaptive SHAP,0.2967483481129727
+spike_process,Adaptive (Smoothed),0.2952640939755247
+garch_regime,Vanilla SHAP,0.0336563287525275
+garch_regime,TimeShap,0.0869861095298759
+garch_regime,Rolling SHAP,0.0976822295711774
+garch_regime,Adaptive (Max),0.0722463449303799
+garch_regime,Adaptive (Mean),0.0866652355887122
+garch_regime,Adaptive SHAP,0.1171091550015524
+garch_regime,Adaptive (Smoothed),0.1159257079974194
