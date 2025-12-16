@@ -1,0 +1,5 @@
+dataset,N0,alpha,num_bootstrap,window_csv,window_mean,window_std,window_min,window_max,detection_time,n_timepoints,breakpoint_detection_lag_mean,breakpoint_detection_lag_std,success
+piecewise_ar3,50,0.95,10,examples/results/robustness/lpa_sensitivity/piecewise_ar3/temp_N050_alpha0.95_num_bootstrap10/windows.csv,279.873,141.02555977554803,1.0,650.0,4.506111145019531e-05,1500,6.0,4.0,True
+piecewise_ar3,50,0.95,50,examples/results/robustness/lpa_sensitivity/piecewise_ar3/temp_N050_alpha0.95_num_bootstrap50/windows.csv,301.76033333333334,148.8014055671341,1.0,750.0,3.719329833984375e-05,1500,14.5,6.5,True
+piecewise_ar3,100,0.95,10,examples/results/robustness/lpa_sensitivity/piecewise_ar3/temp_N0100_alpha0.95_num_bootstrap10/windows.csv,316.75233333333335,131.56701364935398,1.0,580.0,10798.771246910095,1500,45.5,37.5,True
+piecewise_ar3,100,0.95,50,examples/results/robustness/lpa_sensitivity/piecewise_ar3/temp_N0100_alpha0.95_num_bootstrap50/windows.csv,324.68266666666665,134.99338789760387,1.0,600.0,48476.89506101608,1500,44.5,38.5,True

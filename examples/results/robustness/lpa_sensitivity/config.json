@@ -1,0 +1,30 @@
+{
+  "datasets": [
+    "piecewise_ar3",
+    "arx_rotating"
+  ],
+  "param_grid": {
+    "N0": [
+      25,
+      50,
+      75,
+      100,
+      150,
+      200
+    ],
+    "alpha": [
+      0.9,
+      0.95,
+      0.99
+    ],
+    "num_bootstrap": [
+      10,
+      30,
+      50
+    ]
+  },
+  "n_runs": 2,
+  "quick_test": false,
+  "benchmark_only": false,
+  "timestamp": "2025-12-12 15:54:53"
+}

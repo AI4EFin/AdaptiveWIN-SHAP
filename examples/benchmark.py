@@ -15,7 +15,6 @@ import numpy as np
 import pandas as pd
 import torch
 import json
-from pathlib import Path
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
@@ -23,10 +22,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 from benchmarking import (
     GlobalSHAP,
     RollingWindowSHAP,
-    TimeShapWrapper,
-    create_sequences
+    TimeShapWrapper
 )
-from adaptivewinshap import AdaptiveWinShap, ChangeDetector, AdaptiveModel, store_init_kwargs
+from adaptivewinshap import AdaptiveWinShap, AdaptiveModel, store_init_kwargs
 
 
 class AdaptiveLSTM(AdaptiveModel):

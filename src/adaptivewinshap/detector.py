@@ -65,6 +65,7 @@ class ChangeDetector:
         DT_N = pd.DataFrame({"Date": np.arange(len(self.data)), "N": target_data})
         windows, mse_vals, rmse_vals, likelihoods, scaled_windows = [], [], [], [], []
         x_axis = np.arange(len(self.data), dtype=float)  # absolute index as x
+        animator = None  # Initialize to None
         if debug_anim:
             animator = SlidingWindowAnimator(
                 x_axis, np.asarray(target_data, dtype=float),
