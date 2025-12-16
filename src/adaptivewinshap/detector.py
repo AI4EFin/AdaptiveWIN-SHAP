@@ -51,12 +51,16 @@ class ChangeDetector:
     # ----------------------------
     # Detection run (with weighted bootstrap retraining)
     # ----------------------------
-    def detect(self, min_window=3, n_0=200, jump=10, search_step=5, alpha=0.95, num_bootstrap=50, t_workers=-1, b_workers=-1, one_b_threads=-1, debug_anim=True, pause=0.05, save_path=None, fps=16, boomerang=False):
+    def detect(self, min_window=3, n_0=200, jump=10, search_step=5, alpha=0.95, num_bootstrap=50, t_workers=-1, b_workers=-1, one_b_threads=-1, debug_anim=True, pause=0.05, save_path=None, fps=16, boomerang=False, growth="geometric", growth_base=2.0):
         """
         t_workers: int, default -1 (use all available). Workers used to parallelize the test statistic.
         b_workers: int, default -1 (use all available). Workers used to parallelize the bootstrap.
         one_b_threads: int, default -1 (use all available). Workers used to parallelize the inner loop of a bootstrap.
         data: 1D numpy array (time series)
+        growth: str, default "geometric". Window growth strategy: "arithmetic" or "geometric"
+            - "arithmetic": Windows grow as n_0, 2*n_0, 3*n_0, ...
+            - "geometric": Windows grow as n_0, 2*n_0, 4*n_0, 8*n_0, ... (Spokoiny 1998, Example 2.1)
+        growth_base: float, default 2.0. Base for geometric growth (only used if growth="geometric")
         Returns DataFrame with diagnostics per step.
         Uses OOS MSE and **per-batch weighted retraining** in bootstrap if enabled.
         """
@@ -83,8 +87,16 @@ class ChangeDetector:
             t0 = time.time()
             io = self.data.shape[0] - l
 
-            # arithmetic schedule
-            K = int(io / n_0)
+            # Determine window sizes based on growth strategy
+            if growth == "geometric":
+                # Geometric growth (Spokoiny 1998, Example 2.1)
+                # K = log_a(io/n_0) where a = growth_base
+                K = int(np.emath.logn(growth_base, io / n_0)) + 1
+            elif growth == "arithmetic":
+                # Arithmetic growth (original implementation)
+                K = int(io / n_0)
+            else:
+                raise ValueError(f"growth must be 'arithmetic' or 'geometric', got: {growth}")
 
             I_0 = list(self.data[max(0, io - n_0):io])
             I_k_minus1 = I_0
@@ -92,9 +104,13 @@ class ChangeDetector:
 
             for k in range(1, K + 1):
                 start_k_time = time.time()
-                # arithmetic
-                n_k = (k + 1) * n_0
-                n_k_plus1 = (k + 2) * n_0
+                # Calculate window sizes based on growth strategy
+                if growth == "geometric":
+                    n_k = int(np.power(growth_base, k) * n_0)
+                    n_k_plus1 = int(np.power(growth_base, k + 1) * n_0)
+                else:  # arithmetic
+                    n_k = (k + 1) * n_0
+                    n_k_plus1 = (k + 2) * n_0
 
                 start_kp1_abs = max(0, io - n_k_plus1)
                 end_kp1_abs = io  # exclusive upper bound

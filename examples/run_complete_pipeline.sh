@@ -36,6 +36,8 @@ datasets=(
 N0=75
 JUMP=1
 NUM_RUNS=9
+GROWTH="geometric"  # Options: "arithmetic" or "geometric"
+GROWTH_BASE=2.0     # Base for geometric growth
 
 # Track results
 declare -a window_results
@@ -58,7 +60,9 @@ for dataset in "${datasets[@]}"; do
         --dataset "$dataset" \
         --n0 $N0 \
         --jump $JUMP \
-        --num-runs $NUM_RUNS
+        --num-runs $NUM_RUNS \
+        --growth $GROWTH \
+        --growth-base $GROWTH_BASE
 
     if [ $? -eq 0 ]; then
         window_results+=("$dataset : SUCCESS")
@@ -85,7 +89,8 @@ for dataset in "${datasets[@]}"; do
         --dataset "$dataset" \
         --data-type simulated \
         --n0 $N0 \
-        --jump $JUMP
+        --jump $JUMP \
+        --growth $GROWTH
 
     if [ $? -eq 0 ]; then
         benchmark_results+=("$dataset : SUCCESS")
@@ -154,7 +159,7 @@ echo "Pipeline complete!"
 echo "============================================================"
 echo ""
 echo "Results are organized in:"
-echo "  • Window sizes: examples/results/LSTM/{dataset}/Jump_${JUMP}_N0_${N0}/"
+echo "  • Window sizes: examples/results/LSTM/{dataset}/${GROWTH}/Jump_${JUMP}_N0_${N0}/"
 echo "  • Benchmarks:   examples/results/benchmark_{dataset}/"
 echo "  • Figures:      examples/results/benchmark_{dataset}/figures/"
 echo ""

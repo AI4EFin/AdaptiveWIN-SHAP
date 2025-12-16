@@ -615,6 +615,8 @@ if __name__ == "__main__":
                         help='Jump value used in window detection (default: 1)')
     parser.add_argument('--rolling-mean-window', type=int, default=75,
                         help='Window size for rolling mean smoothing of adaptive windows (default: 75)')
+    parser.add_argument('--growth', type=str, default='geometric', choices=['arithmetic', 'geometric'],
+                        help='Window growth strategy used in detection: arithmetic or geometric (default: geometric)')
     args = parser.parse_args()
 
     # Configuration
@@ -663,7 +665,7 @@ if __name__ == "__main__":
         ROLLING_STRIDE = 1
 
         # Pre-computed windows path
-        PRECOMPUTED_WINDOWS = f"examples/results/LSTM/{dataset_name}/Jump_{args.jump}_N0_{args.n0}/windows.csv"
+        PRECOMPUTED_WINDOWS = f"examples/results/LSTM/{dataset_name}/{args.growth}/Jump_{args.jump}_N0_{args.n0}/windows.csv"
 
         print("="*60)
         print("SHAP Methods Benchmarking - Simulated Data")
@@ -725,7 +727,7 @@ if __name__ == "__main__":
         # Pre-computed windows path (matching lstm_empirical.py output)
         JUMP = 1
         N_0 = 72
-        PRECOMPUTED_WINDOWS = f"examples/results/LSTM/empirical/Jump_{JUMP}_N0_{N_0}/windows.csv"
+        PRECOMPUTED_WINDOWS = f"examples/results/LSTM/empirical/{args.growth}/Jump_{JUMP}_N0_{N_0}/windows.csv"
 
         print("="*60)
         print("SHAP Methods Benchmarking - Empirical Data")

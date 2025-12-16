@@ -9,16 +9,21 @@ echo ""
 # Array of all datasets
 datasets=(
     "piecewise_ar3"
-    "arx_rotating"
-    "trend_season"
-    "spike_process"
-    "garch_regime"
+#    "arx_rotating"
+#    "trend_season"
+#    "spike_process"
+#    "garch_regime"
 )
 
 # Configuration
 N0=100
+NUM_BOOTSTRAP=30
 JUMP=1
-NUM_RUNS=9
+STEP=2
+NUM_RUNS=1
+GROWTH="geometric"  # Options: "arithmetic" or "geometric"
+GROWTH_BASE=1.41421356237     # Base for geometric growth
+
 
 # Track results
 declare -a results
@@ -34,7 +39,11 @@ for dataset in "${datasets[@]}"; do
         --dataset "$dataset" \
         --n0 $N0 \
         --jump $JUMP \
-        --num-runs $NUM_RUNS
+        --step $STEP \
+        --num-runs $NUM_RUNS \
+        --growth $GROWTH \
+        --growth-base $GROWTH_BASE \
+        --num-bootstrap $NUM_BOOTSTRAP
 
     if [ $? -eq 0 ]; then
         results+=("$dataset : SUCCESS")

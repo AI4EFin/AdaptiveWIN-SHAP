@@ -19,6 +19,7 @@ datasets=(
 N0=75
 JUMP=1
 ROLLING_MEAN_WINDOW=10
+GROWTH="geometric"  # Options: "arithmetic" or "geometric" (must match simulation run)
 
 # Track results
 declare -a results
@@ -35,7 +36,8 @@ for dataset in "${datasets[@]}"; do
         --data-type simulated \
         --n0 $N0 \
         --jump $JUMP \
-        --rolling-mean-window $ROLLING_MEAN_WINDOW
+        --rolling-mean-window $ROLLING_MEAN_WINDOW \
+        --growth $GROWTH
 
     if [ $? -eq 0 ]; then
         results+=("$dataset : SUCCESS")

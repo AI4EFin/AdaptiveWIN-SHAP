@@ -81,8 +81,18 @@ if __name__ == "__main__":
                         help='Initial window size (default: 100)')
     parser.add_argument('--jump', type=int, default=1,
                         help='Jump size for detection (default: 1)')
+    parser.add_argument('--step', type=int, default=1,
+                        help='Step size for detection. Represents how many points we should skip in J_k for faster computation (default: 1)')
+    parser.add_argument('--alpha', type=float, default=0.95,
+                        help='The quantile of the bootstrap distribution used to make the decision (default: 0.95)')
     parser.add_argument('--num-runs', type=int, default=1,
                         help='Number of detection runs (default: 1)')
+    parser.add_argument('--growth', type=str, default='geometric', choices=['arithmetic', 'geometric'],
+                        help='Window growth strategy: arithmetic or geometric (default: geometric)')
+    parser.add_argument('--growth-base', type=float, default=1.41421356237,
+                        help='Base for geometric growth (default: ~np.sqrt(2)')
+    parser.add_argument('--num-bootstrap', type=int, default=30,
+                        help='The number of bootstrap samples for the test statistic (default: 30)')
     args = parser.parse_args()
 
     DEVICE = "cpu"
@@ -179,15 +189,15 @@ if __name__ == "__main__":
     MIN_SEG = 4
     N_0 = args.n0
     JUMP = args.jump
-    STEP = 5
-    ALPHA = 0.95
-    NUM_BOOTSTRAP = 1
+    STEP = args.step
+    ALPHA = args.alpha
+    NUM_BOOTSTRAP = args.num_bootstrap
 
-    out_dir = os.path.join("examples", f"results/LSTM/{dataset_name}/Jump_{JUMP}_N0_{N_0}")
+    out_dir = os.path.join("examples", f"results/LSTM/{dataset_name}/{args.growth}/Jump_{JUMP}_N0_{N_0}")
     os.makedirs(out_dir, exist_ok=True)
 
     print(f"Output directory: {out_dir}")
-    print(f"Parameters: N_0={N_0}, JUMP={JUMP}, NUM_RUNS={args.num_runs}")
+    print(f"Parameters: N_0={N_0}, JUMP={JUMP}, NUM_RUNS={args.num_runs}, GROWTH={args.growth}, GROWTH_BASE={args.growth_base}, NUM_BOOTSTRAP={NUM_BOOTSTRAP}")
     print()
 
     # ============================================================
@@ -199,7 +209,8 @@ if __name__ == "__main__":
         print(f"Run {run}")
         out_csv = os.path.join(out_dir, f"run_{run}.csv")
         results = cd.detect(min_window=MIN_SEG, n_0=N_0, jump=JUMP, search_step=STEP, alpha=ALPHA, num_bootstrap=NUM_BOOTSTRAP,
-                        t_workers=10, b_workers=10, one_b_threads=1, save_path=f"{out_dir}/run_{run}.mp4")
+                        t_workers=10, b_workers=10, one_b_threads=1, save_path=f"{out_dir}/run_{run}.mp4",
+                        growth=args.growth, growth_base=args.growth_base)
 
         pd.DataFrame(results).to_csv(out_csv)
         print(f"Saved results to: {out_csv}")
