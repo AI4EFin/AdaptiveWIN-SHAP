@@ -113,12 +113,19 @@ class LPASensitivityExperiment:
         return "cpu"
 
     def run_lpa_detection(self, dataset_name, N0, alpha, num_bootstrap,
-                          temp_dir, n_runs=1):
+                          temp_dir, n_runs=1, growth="geometric", growth_base=2.0):
         """
         Run LPA window detection with specified parameters.
 
         Note: jump is fixed at 1 (no skipping) as it's only a computational
         parameter for development, not a methodological parameter.
+
+        Parameters:
+        -----------
+        growth : str
+            Window growth strategy: "arithmetic" or "geometric"
+        growth_base : float
+            Base for geometric growth (only used if growth="geometric")
 
         Returns:
         --------
@@ -181,14 +188,16 @@ class LPASensitivityExperiment:
                 min_window=4,
                 n_0=N0,
                 jump=1,  # Fixed at 1 - not a methodological parameter
-                search_step=5,
+                search_step=2,
                 alpha=alpha,
                 num_bootstrap=num_bootstrap,
                 t_workers=10,
                 b_workers=10,
                 one_b_threads=1,
                 debug_anim=False,
-                save_path=None
+                save_path=None,
+                growth=growth,
+                growth_base=growth_base
             )
 
 
@@ -449,7 +458,7 @@ class LPASensitivityExperiment:
             print(f"Detection runs per combination: {n_runs}")
         print(f"{'='*60}\n")
 
-        # Create dataset-specific output directory
+        # Create dataset-specific output directory with growth strategy
         dataset_output = self.output_dir / dataset_name
         dataset_output.mkdir(parents=True, exist_ok=True)
 
@@ -457,9 +466,14 @@ class LPASensitivityExperiment:
         for combo in tqdm(combinations, desc=f"Grid search on {dataset_name}"):
             params = dict(zip(keys, combo))
 
+            # Get growth strategy and create subdirectory
+            growth_strategy = params.get('growth', 'arithmetic')
+            growth_output = dataset_output / growth_strategy
+            growth_output.mkdir(parents=True, exist_ok=True)
+
             # Create temp directory for this run
             param_str = "_".join([f"{k}{v}" for k, v in params.items()])
-            temp_dir = dataset_output / f"temp_{param_str}"
+            temp_dir = growth_output / f"temp_{param_str}"
 
             if benchmark_only:
                 # Check if temp directory and windows.csv exist
@@ -480,7 +494,9 @@ class LPASensitivityExperiment:
                         alpha=params['alpha'],
                         num_bootstrap=params['num_bootstrap'],
                         temp_dir=temp_dir,
-                        n_runs=n_runs
+                        n_runs=n_runs,
+                        growth=params.get('growth', 'geometric'),
+                        growth_base=params.get('growth_base', 2.0)
                     )
                 else:
                     # Load existing detection results from windows.csv
@@ -556,7 +572,7 @@ def main():
     parser.add_argument('--datasets', type=str, nargs='+',
                        default=['piecewise_ar3', 'arx_rotating'],
                        help='Datasets to test')
-    parser.add_argument('--n-runs', type=int, default=2,
+    parser.add_argument('--n-runs', type=int, default=1,
                        help='Number of LPA detection runs per parameter set')
     parser.add_argument('--quick-test', action='store_true',
                        help='Run quick test with reduced parameter grid')
@@ -574,14 +590,18 @@ def main():
         param_grid = {
             'N0': [50, 100],
             'alpha': [0.95],
-            'num_bootstrap': [10, 50]
+            'num_bootstrap': [10, 50],
+            'growth': ['geometric'],
+            'growth_base': [1.41421356237]  # sqrt(2)
         }
     else:
         # Full grid
         param_grid = {
-            'N0': [25, 50, 75, 100, 150, 200],
+            'N0': [25, 50, 75, 100],
             'alpha': [0.90, 0.95, 0.99],
-            'num_bootstrap': [10, 30, 50]
+            'num_bootstrap': [10, 30, 50],
+            'growth': ['geometric'],
+            'growth_base': [1.41421356237]  # 2.0 and sqrt(2)
         }
 
     print("="*60)

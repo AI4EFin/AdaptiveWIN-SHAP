@@ -663,6 +663,55 @@ def plot_all_methods_with_true_importance(data, save_dir):
     print(f"Saved: all_methods_with_true_importance.png")
     plt.close()
 
+def plot_window_sizes(data, save_dir):
+    """Plot adaptive window sizes over time."""
+    # Try to load windows from different possible sources
+    windows_df = None
+
+    # First try: from loaded data
+    if 'windows' in data:
+        windows_df = data['windows']
+
+    # Second try: from adaptive_shap results
+    if windows_df is None and 'adaptive_shap' in data:
+        adaptive_df = data['adaptive_shap']
+        if 'window_size' in adaptive_df.columns:
+            windows_df = adaptive_df[['end_index', 'window_size']].copy()
+            windows_df.rename(columns={'window_size': 'windows'}, inplace=True)
+
+    if windows_df is None:
+        print("No window size data available - skipping window size plot")
+        return
+
+    fig, ax = plt.subplots(1, 1, figsize=(14, 5))
+
+    # Get window column (might be 'windows' or 'window_mean')
+    window_col = None
+    if 'windows' in windows_df.columns:
+        window_col = 'windows'
+    elif 'window_mean' in windows_df.columns:
+        window_col = 'window_mean'
+    else:
+        print(f"Warning: No window column found. Available columns: {windows_df.columns.tolist()}")
+        return
+
+    window_sizes = windows_df[window_col].values
+    time_index = np.arange(len(window_sizes))
+
+    # Plot window sizes
+    ax.plot(time_index, window_sizes, color='#2ca02c', linewidth=2, alpha=0.8, label='Adaptive Window Size')
+
+    ax.set_xlabel('Time Index', fontsize=11)
+    ax.set_ylabel('Window Size', fontsize=11)
+    ax.set_title('Adaptive Window Sizes Over Time', fontsize=12, fontweight='bold')
+    ax.legend(loc='best', frameon=True, fancybox=True, shadow=True)
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, 'window_sizes.png'), bbox_inches='tight')
+    print(f"Saved: window_sizes.png")
+    plt.close()
+
+
 def plot_dataset_with_regimes(data, save_dir):
     """Plot the raw dataset with color-coded stationarity regions."""
     if 'config' not in data:
@@ -819,6 +868,12 @@ def main():
         plot_dataset_with_regimes(data, save_dir)
     except Exception as e:
         print(f"Error in dataset visualization: {e}")
+
+    # Plot window sizes
+    try:
+        plot_window_sizes(data, save_dir)
+    except Exception as e:
+        print(f"Error in window size plot: {e}")
 
     try:
         plot_faithfulness_comparison(data, save_dir)

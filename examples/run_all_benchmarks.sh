@@ -9,14 +9,14 @@ echo ""
 # Array of all datasets (matching run_all_simulations.sh)
 datasets=(
     "piecewise_ar3"
-    "arx_rotating"
-    "trend_season"
-    "spike_process"
-    "garch_regime"
+#    "arx_rotating"
+#    "trend_season"
+#    "spike_process"
+#    "garch_regime"
 )
 
 # Configuration (matching run_all_simulations.sh)
-N0=75
+N0=100
 JUMP=1
 ROLLING_MEAN_WINDOW=10
 GROWTH="geometric"  # Options: "arithmetic" or "geometric" (must match simulation run)
