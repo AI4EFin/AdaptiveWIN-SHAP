@@ -5,8 +5,17 @@ This script creates comprehensive visualizations for LPA parameter sensitivity
 analysis, including individual parameter effects and aggregated summaries.
 
 Usage:
+    # Visualize single dataset with geometric growth
+    python examples/robustness/visualize_lpa_sensitivity.py --dataset piecewise_ar3 --growth geometric
+
+    # Visualize all datasets with arithmetic growth
+    python examples/robustness/visualize_lpa_sensitivity.py --all-datasets --growth arithmetic
+
+    # Visualize all growth strategies (no --growth flag)
     python examples/robustness/visualize_lpa_sensitivity.py --dataset piecewise_ar3
-    python examples/robustness/visualize_lpa_sensitivity.py --all-datasets
+
+    # Enable window analysis
+    python examples/robustness/visualize_lpa_sensitivity.py --dataset piecewise_ar3 --growth geometric --window-analysis
 """
 
 import argparse
@@ -24,7 +33,8 @@ def visualize_single_dataset(
     results_dir: Path,
     output_dir: Path,
     mif_lif_mode: str = 'all',
-    window_analysis: bool = False
+    window_analysis: bool = False,
+    growth_strategy: str = None
 ):
     """
     Create visualizations for a single dataset.
@@ -41,24 +51,57 @@ def visualize_single_dataset(
         MIF/LIF display mode: 'ratio', 'all', or 'individual'
     window_analysis : bool
         Whether to create window analysis plots
+    growth_strategy : str
+        Window growth strategy to visualize: 'geometric', 'arithmetic', or None for all
     """
     print(f"\n{'='*80}")
     print(f"Visualizing LPA Sensitivity: {dataset_name}")
+    if growth_strategy:
+        print(f"Growth Strategy: {growth_strategy}")
     print(f"{'='*80}\n")
 
-    # Load results
+    # Load results - try from growth subdirectory first, then fall back to main directory
     dataset_dir = results_dir / dataset_name
-    summary_file = dataset_dir / 'sensitivity_summary.csv'
+
+    # If growth strategy is specified, look in that subdirectory
+    if growth_strategy:
+        growth_dir = dataset_dir / growth_strategy
+        if growth_dir.exists():
+            # Check if summary exists in growth subdirectory
+            summary_file = growth_dir.parent / 'sensitivity_summary.csv'
+            if not summary_file.exists():
+                # Try loading from parent and filtering
+                summary_file = dataset_dir / 'sensitivity_summary.csv'
+            dataset_dir = growth_dir
+        else:
+            print(f"Warning: Growth directory not found: {growth_dir}")
+            print(f"Trying to filter results from main directory...")
+            summary_file = dataset_dir / 'sensitivity_summary.csv'
+    else:
+        summary_file = dataset_dir / 'sensitivity_summary.csv'
 
     if not summary_file.exists():
         print(f"Warning: No results found for {dataset_name}")
         return
 
     results_df = pd.read_csv(summary_file)
+
+    # Filter by growth strategy if specified
+    if growth_strategy and 'growth' in results_df.columns:
+        results_df = results_df[results_df['growth'] == growth_strategy].copy()
+        print(f"Filtered to {growth_strategy} growth strategy")
+
     print(f"Loaded {len(results_df)} parameter combinations")
 
-    # Initialize visualizer
-    viz = RobustnessVisualizer(output_dir=output_dir / dataset_name)
+    # Initialize visualizer with growth-specific output directory
+    if growth_strategy:
+        viz_output_dir = output_dir / dataset_name / growth_strategy
+        title_prefix = f"{dataset_name} ({growth_strategy})"
+    else:
+        viz_output_dir = output_dir / dataset_name
+        title_prefix = dataset_name
+
+    viz = RobustnessVisualizer(output_dir=viz_output_dir)
 
     # Compute MIF/LIF ratios
     results_df = viz.compute_mif_lif_ratios(results_df, percentiles=[50, 90])
@@ -93,7 +136,7 @@ def visualize_single_dataset(
                 param_col='N0',
                 metric_cols=metric,
                 dataset_name=dataset_name,
-                title=f'{dataset_name}: {metric} vs N0',
+                title=f'{title_prefix}: {metric} vs N0',
                 save_name=f'n0_sensitivity_{metric}',
                 ylabel=metric.replace('_', ' ').title(),
                 show_error_bars=True
@@ -109,7 +152,7 @@ def visualize_single_dataset(
                 param_col='alpha',
                 metric_cols=metric,
                 dataset_name=dataset_name,
-                title=f'{dataset_name}: {metric} vs alpha',
+                title=f'{title_prefix}: {metric} vs alpha',
                 save_name=f'alpha_sensitivity_{metric}',
                 ylabel=metric.replace('_', ' ').title(),
                 show_error_bars=True
@@ -125,7 +168,7 @@ def visualize_single_dataset(
                 param_col='num_bootstrap',
                 metric_cols=metric,
                 dataset_name=dataset_name,
-                title=f'{dataset_name}: {metric} vs num_bootstrap',
+                title=f'{title_prefix}: {metric} vs num_bootstrap',
                 save_name=f'num_bootstrap_sensitivity_{metric}',
                 ylabel=metric.replace('_', ' ').title(),
                 show_error_bars=True
@@ -146,7 +189,7 @@ def visualize_single_dataset(
             param_col='N0',
             metric_cols=multi_metrics,
             dataset_name=dataset_name,
-            title=f'{dataset_name}: All Metrics vs N0',
+            title=f'{title_prefix}: All Metrics vs N0',
             save_name='n0_sensitivity_all_metrics',
             ylabel='Score',
             show_error_bars=False
@@ -164,7 +207,7 @@ def visualize_single_dataset(
 
             viz.plot_heatmap(
                 data=heatmap_data,
-                title=f'{dataset_name}: {heatmap_metric} (N0 vs alpha)',
+                title=f'{title_prefix}: {heatmap_metric} (N0 vs alpha)',
                 save_name=f'n0_alpha_{heatmap_metric}_heatmap',
                 cmap='RdYlGn',
                 fmt='.3f'
@@ -181,7 +224,7 @@ def visualize_single_dataset(
                 results_df=results_df,
                 metric_cols=metric_cols,
                 stability_threshold=0.2,
-                title=f'{dataset_name}: Stability Assessment',
+                title=f'{title_prefix}: Stability Assessment',
                 save_name='stability_summary'
             )
             plt.close()
@@ -221,13 +264,29 @@ def visualize_single_dataset(
             N0_int = int(best_config['N0'])
             alpha_val = best_config['alpha']
             num_boot = int(best_config['num_bootstrap'])
-            windows_csv = dataset_dir / f"temp_N{N0_int:03d}_alpha{alpha_val:.2f}_num_bootstrap{num_boot:03d}/windows.csv"
 
-            if not windows_csv.exists():
-                # Try alternative naming format
-                windows_csv = dataset_dir / f"temp_N{N0_int}_alpha{alpha_val}_num_bootstrap{num_boot}/windows.csv"
+            # Get growth info for best config
+            if 'growth' in best_config and 'growth_base' in best_config:
+                growth_val = best_config['growth']
+                growth_base_val = best_config['growth_base']
+                param_str = f"temp_N{N0_int}_alpha{alpha_val}_num_bootstrap{num_boot}_growth{growth_val}_growth_base{growth_base_val}"
+            else:
+                param_str = f"temp_N{N0_int}_alpha{alpha_val}_num_bootstrap{num_boot}"
 
-            if windows_csv.exists():
+            # Try different path combinations
+            possible_paths = [
+                dataset_dir / param_str / "windows.csv",  # With growth in param string
+                dataset_dir / f"temp_N{N0_int:03d}_alpha{alpha_val:.2f}_num_bootstrap{num_boot:03d}/windows.csv",  # Old format
+                dataset_dir / f"temp_N{N0_int}_alpha{alpha_val}_num_bootstrap{num_boot}/windows.csv"  # Alternative
+            ]
+
+            windows_csv = None
+            for path in possible_paths:
+                if path.exists():
+                    windows_csv = path
+                    break
+
+            if windows_csv and windows_csv.exists():
                 print(f"  b. Loading windows from best config (N0={N0_int}, alpha={alpha_val}, num_bootstrap={num_boot})...")
                 windows_df = pd.read_csv(windows_csv)
 
@@ -265,15 +324,19 @@ def visualize_single_dataset(
                 if fig:
                     plt.close(fig)
             else:
-                print(f"  Warning: Windows file not found: {windows_csv}")
+                if windows_csv:
+                    print(f"  Warning: Windows file not found: {windows_csv}")
+                else:
+                    print(f"  Warning: Could not find windows.csv in any expected location")
 
-    print(f"\nAll visualizations saved to: {output_dir / dataset_name}")
+    print(f"\nAll visualizations saved to: {viz_output_dir}")
 
 
 def create_cross_dataset_summary(
     results_dir: Path,
     output_dir: Path,
-    datasets: list
+    datasets: list,
+    growth_strategy: str = None
 ):
     """
     Create summary comparing results across all datasets.
@@ -286,9 +349,13 @@ def create_cross_dataset_summary(
         Output directory for figures
     datasets : list
         List of dataset names
+    growth_strategy : str
+        Window growth strategy to visualize: 'geometric', 'arithmetic', or None for all
     """
     print(f"\n{'='*80}")
     print("Creating Cross-Dataset Summary")
+    if growth_strategy:
+        print(f"Growth Strategy: {growth_strategy}")
     print(f"{'='*80}\n")
 
     # Load all results
@@ -296,14 +363,26 @@ def create_cross_dataset_summary(
     for dataset_name in datasets:
         summary_file = results_dir / dataset_name / 'sensitivity_summary.csv'
         if summary_file.exists():
-            all_results[dataset_name] = pd.read_csv(summary_file)
+            df = pd.read_csv(summary_file)
+            # Filter by growth strategy if specified
+            if growth_strategy and 'growth' in df.columns:
+                df = df[df['growth'] == growth_strategy].copy()
+            if len(df) > 0:  # Only include if data remains after filtering
+                all_results[dataset_name] = df
 
     if not all_results:
         print("No results found for cross-dataset summary")
         return
 
-    # Initialize visualizer
-    viz = RobustnessVisualizer(output_dir=output_dir / 'cross_dataset')
+    # Initialize visualizer with growth-specific output directory
+    if growth_strategy:
+        viz_output_dir = output_dir / 'cross_dataset' / growth_strategy
+        title_suffix = f" ({growth_strategy})"
+    else:
+        viz_output_dir = output_dir / 'cross_dataset'
+        title_suffix = ""
+
+    viz = RobustnessVisualizer(output_dir=viz_output_dir)
 
     # Find common metrics across all datasets
     all_metrics_sets = [set(df.columns) for df in all_results.values()]
@@ -332,7 +411,7 @@ def create_cross_dataset_summary(
             viz.plot_multi_metric_comparison(
                 results_dict=all_results,
                 metric_cols=metric_cols,
-                title='LPA Sensitivity: Cross-Dataset Comparison',
+                title=f'LPA Sensitivity: Cross-Dataset Comparison{title_suffix}',
                 save_name='cross_dataset_metrics'
             )
             plt.close()
@@ -386,7 +465,7 @@ def create_cross_dataset_summary(
         output_name='lpa_sensitivity_summary'
     )
 
-    print(f"\nCross-dataset summary saved to: {output_dir / 'cross_dataset'}")
+    print(f"\nCross-dataset summary saved to: {viz_output_dir}")
 
 
 def main():
@@ -428,6 +507,13 @@ def main():
         action='store_true',
         help='Enable window size analysis plots'
     )
+    parser.add_argument(
+        '--growth',
+        type=str,
+        choices=['geometric', 'arithmetic'],
+        default=None,
+        help='Window growth strategy to visualize: "geometric" or "arithmetic". If not specified, visualizes all available strategies.'
+    )
 
     args = parser.parse_args()
 
@@ -454,11 +540,13 @@ def main():
     for dataset_name in datasets:
         visualize_single_dataset(dataset_name, results_dir, output_dir,
                                 mif_lif_mode=args.mif_lif_mode,
-                                window_analysis=args.window_analysis)
+                                window_analysis=args.window_analysis,
+                                growth_strategy=args.growth)
 
     # Create cross-dataset summary if multiple datasets
     if len(datasets) > 1:
-        create_cross_dataset_summary(results_dir, output_dir, datasets)
+        create_cross_dataset_summary(results_dir, output_dir, datasets,
+                                    growth_strategy=args.growth)
 
     print("\n" + "="*80)
     print("Visualization complete!")

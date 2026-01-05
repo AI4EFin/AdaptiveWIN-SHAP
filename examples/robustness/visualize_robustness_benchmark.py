@@ -5,6 +5,16 @@ Adapts benchmark_viz.py for robustness test results, showing:
 - Faithfulness/ablation metrics across parameter configurations
 - Window size evolution over time for each configuration
 - Comparison of performance vs parameter settings
+
+Usage:
+    # Visualize LPA sensitivity results with geometric growth
+    python examples/robustness/visualize_robustness_benchmark.py --test-type lpa_sensitivity --dataset piecewise_ar3 --growth geometric
+
+    # Visualize all growth strategies
+    python examples/robustness/visualize_robustness_benchmark.py --test-type lpa_sensitivity --dataset piecewise_ar3
+
+    # Visualize bootstrap CI results
+    python examples/robustness/visualize_robustness_benchmark.py --test-type bootstrap_ci --dataset piecewise_ar3
 """
 
 import os
@@ -29,7 +39,7 @@ plt.rcParams['axes.titlesize'] = 12
 plt.rcParams['legend.fontsize'] = 9
 
 
-def load_robustness_benchmark_data(results_dir, dataset_name):
+def load_robustness_benchmark_data(results_dir, dataset_name, growth_strategy=None):
     """
     Load robustness benchmark results.
 
@@ -39,6 +49,8 @@ def load_robustness_benchmark_data(results_dir, dataset_name):
         Root robustness results directory (e.g., lpa_sensitivity/ or bootstrap_ci/)
     dataset_name : str
         Name of dataset
+    growth_strategy : str, optional
+        Window growth strategy to filter: 'geometric', 'arithmetic', or None for all
 
     Returns
     -------
@@ -47,21 +59,30 @@ def load_robustness_benchmark_data(results_dir, dataset_name):
         - 'configs': list of parameter configurations
         - 'windows': dict mapping config to windows DataFrame
         - 'shap': dict mapping config to SHAP results DataFrame
+        - 'growth_strategy': str or None
     """
-    data = {}
+    data = {'growth_strategy': growth_strategy}
 
     dataset_dir = results_dir / dataset_name
 
     # Load summary results
     summary_file = dataset_dir / 'sensitivity_summary.csv'
     if summary_file.exists():
-        data['summary'] = pd.read_csv(summary_file)
+        df = pd.read_csv(summary_file)
+        # Filter by growth strategy if specified
+        if growth_strategy and 'growth' in df.columns:
+            df = df[df['growth'] == growth_strategy].copy()
+        data['summary'] = df
     else:
         # Try global results.csv filtered by dataset
         global_results = results_dir / 'results.csv'
         if global_results.exists():
             df = pd.read_csv(global_results)
-            data['summary'] = df[df['dataset'] == dataset_name].copy()
+            df = df[df['dataset'] == dataset_name].copy()
+            # Filter by growth strategy if specified
+            if growth_strategy and 'growth' in df.columns:
+                df = df[df['growth'] == growth_strategy].copy()
+            data['summary'] = df
 
     # Find all parameter configuration directories
     data['configs'] = []
@@ -69,30 +90,52 @@ def load_robustness_benchmark_data(results_dir, dataset_name):
     data['shap'] = {}
     data['benchmark_results'] = {}
 
-    # Look for temp directories
-    for temp_dir in dataset_dir.glob('temp_*'):
-        if not temp_dir.is_dir():
+    # Determine search directories based on growth strategy
+    if growth_strategy:
+        # Look in growth-specific subdirectory
+        search_dirs = [dataset_dir / growth_strategy]
+    else:
+        # Look in both main directory and growth subdirectories
+        search_dirs = [dataset_dir]
+        for growth_dir in ['geometric', 'arithmetic']:
+            potential_dir = dataset_dir / growth_dir
+            if potential_dir.exists():
+                search_dirs.append(potential_dir)
+
+    # Look for temp directories in all search locations
+    for search_dir in search_dirs:
+        if not search_dir.exists():
             continue
 
-        config_name = temp_dir.name.replace('temp_', '')
-        data['configs'].append(config_name)
+        for temp_dir in search_dir.glob('temp_*'):
+            if not temp_dir.is_dir():
+                continue
 
-        # Load windows if available
-        windows_csv = temp_dir / 'windows.csv'
-        if windows_csv.exists():
-            data['windows'][config_name] = pd.read_csv(windows_csv)
+            config_name = temp_dir.name.replace('temp_', '')
 
-        # Load SHAP results if available
-        benchmark_dir = temp_dir / 'benchmark'
-        if benchmark_dir.exists():
-            shap_results = benchmark_dir / 'adaptive_shap_results.csv'
-            if shap_results.exists():
-                data['shap'][config_name] = pd.read_csv(shap_results)
+            # Skip if growth strategy filter doesn't match
+            if growth_strategy and 'growth' in config_name:
+                if growth_strategy not in config_name:
+                    continue
 
-            # Load benchmark summary
-            summary_csv = benchmark_dir / 'benchmark_summary.csv'
-            if summary_csv.exists():
-                data['benchmark_results'][config_name] = pd.read_csv(summary_csv)
+            data['configs'].append(config_name)
+
+            # Load windows if available
+            windows_csv = temp_dir / 'windows.csv'
+            if windows_csv.exists():
+                data['windows'][config_name] = pd.read_csv(windows_csv)
+
+            # Load SHAP results if available
+            benchmark_dir = temp_dir / 'benchmark'
+            if benchmark_dir.exists():
+                shap_results = benchmark_dir / 'adaptive_shap_results.csv'
+                if shap_results.exists():
+                    data['shap'][config_name] = pd.read_csv(shap_results)
+
+                # Load benchmark summary
+                summary_csv = benchmark_dir / 'benchmark_summary.csv'
+                if summary_csv.exists():
+                    data['benchmark_results'][config_name] = pd.read_csv(summary_csv)
 
     # Load true importances for comparison
     true_imp_path = f"examples/datasets/simulated/{dataset_name}/true_importances.csv"
@@ -586,23 +629,38 @@ def main():
         default='examples/results/robustness',
         help='Root robustness results directory'
     )
+    parser.add_argument(
+        '--growth',
+        type=str,
+        choices=['geometric', 'arithmetic'],
+        default=None,
+        help='Window growth strategy to visualize: "geometric" or "arithmetic". If not specified, visualizes all available strategies.'
+    )
 
     args = parser.parse_args()
 
     # Build paths
     results_dir = Path(args.results_dir) / args.test_type
-    save_dir = results_dir / 'figures' / args.dataset
+
+    # Include growth strategy in output path if specified
+    if args.growth:
+        save_dir = results_dir / 'figures' / args.dataset / args.growth
+    else:
+        save_dir = results_dir / 'figures' / args.dataset
+
     save_dir.mkdir(parents=True, exist_ok=True)
 
     print("="*80)
     print(f"Robustness Benchmark Visualization")
     print(f"Test Type: {args.test_type}")
     print(f"Dataset: {args.dataset}")
+    if args.growth:
+        print(f"Growth Strategy: {args.growth}")
     print("="*80)
     print(f"Loading data from: {results_dir}")
 
     # Load data
-    data = load_robustness_benchmark_data(results_dir, args.dataset)
+    data = load_robustness_benchmark_data(results_dir, args.dataset, args.growth)
 
     print(f"Found {len(data['configs'])} configurations")
     print(f"Saving figures to: {save_dir}")
@@ -618,11 +676,17 @@ def main():
     }
     breakpoints = breakpoints_map.get(args.dataset, None)
 
+    # Create display name with growth strategy if specified
+    if args.growth:
+        dataset_display = f"{args.dataset} ({args.growth})"
+    else:
+        dataset_display = args.dataset
+
     # Generate plots
     print("\nGenerating visualizations...")
 
     try:
-        plot_window_evolution_per_config(data, args.dataset, save_dir, breakpoints)
+        plot_window_evolution_per_config(data, dataset_display, save_dir, breakpoints)
     except Exception as e:
         print(f"Error in window evolution plots: {e}")
         import traceback
@@ -650,7 +714,7 @@ def main():
         traceback.print_exc()
 
     try:
-        plot_true_vs_detected_by_n0(data, args.dataset, save_dir, breakpoints)
+        plot_true_vs_detected_by_n0(data, dataset_display, save_dir, breakpoints)
     except Exception as e:
         print(f"Error in true vs detected window comparison: {e}")
         import traceback
