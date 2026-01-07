@@ -1,0 +1,67 @@
+{
+  "scenario_name": "random_3",
+  "scenario_type": "random_sampling",
+  "max_pairwise_l2": 0.9610065328810905,
+  "baseline_reference": "piecewise_ar3",
+  "regimes": [
+    {
+      "regime_id": 0,
+      "time_range": [
+        0,
+        500
+      ],
+      "parameters": {
+        "phi_1": -0.3406648374239669,
+        "phi_2": -0.16445300279539507,
+        "phi_3": 0.027501946167470454
+      },
+      "l2_distance_from_baseline": 1.2529921815894214
+    },
+    {
+      "regime_id": 1,
+      "time_range": [
+        500,
+        1000
+      ],
+      "parameters": {
+        "phi_1": -0.28804114760761484,
+        "phi_2": -0.06064946634430742,
+        "phi_3": 0.3810396625946977
+      },
+      "l2_distance_from_baseline": 1.0720757221732307
+    },
+    {
+      "regime_id": 2,
+      "time_range": [
+        1000,
+        1500
+      ],
+      "parameters": {
+        "phi_1": -0.4746992559556526,
+        "phi_2": 0.5366190900720574,
+        "phi_3": 0.6709817449890477
+      },
+      "l2_distance_from_baseline": 0.7514721524318426
+    }
+  ],
+  "generation_params": {
+    "T": 1500,
+    "noise_sigma": 1.0,
+    "regime_lengths": [
+      500,
+      500,
+      500
+    ],
+    "seed": 44
+  },
+  "stationarity_check": {
+    "regime_0_stationary": true,
+    "regime_1_stationary": true,
+    "regime_2_stationary": true
+  },
+  "pairwise_l2_distances": {
+    "regime_0_vs_1": 0.37220067684814656,
+    "regime_0_vs_2": 0.9610065328810905,
+    "regime_1_vs_2": 0.6896646931944017
+  }
+}

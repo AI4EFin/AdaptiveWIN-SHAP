@@ -145,102 +145,6 @@ def load_robustness_benchmark_data(results_dir, dataset_name, growth_strategy=No
     return data
 
 
-def plot_window_evolution_per_config(data, dataset_name, save_dir, breakpoints=None):
-    """
-    Plot window size evolution over time for each configuration.
-
-    Parameters
-    ----------
-    data : dict
-        Loaded robustness data
-    dataset_name : str
-        Name of dataset
-    save_dir : Path
-        Directory to save figures
-    breakpoints : list
-        List of true breakpoints for regime changes
-    """
-    if not data['windows']:
-        print("No window data available - skipping window evolution plots")
-        return
-
-    n_configs = len(data['configs'])
-    if n_configs == 0:
-        return
-
-    # Create subplot grid
-    n_cols = min(3, n_configs)
-    n_rows = (n_configs + n_cols - 1) // n_cols
-
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(6*n_cols, 4*n_rows))
-    fig.suptitle(f'{dataset_name}: Window Size Evolution Across Configurations',
-                 fontsize=14, fontweight='bold')
-
-    # Flatten axes for easier indexing
-    if n_configs == 1:
-        axes = [axes]
-    else:
-        axes = axes.flatten() if n_rows > 1 or n_cols > 1 else [axes]
-
-    for idx, config_name in enumerate(sorted(data['configs'])):
-        ax = axes[idx]
-        windows_df = data['windows'][config_name]
-
-        # Plot window size over time
-        if 'window_mean' in windows_df.columns:
-            window_col = 'window_mean'
-        elif 'windows_run_0' in windows_df.columns:
-            window_col = 'windows_run_0'
-        else:
-            # Find first windows column
-            window_cols = [c for c in windows_df.columns if c.startswith('windows')]
-            if window_cols:
-                window_col = window_cols[0]
-            else:
-                ax.text(0.5, 0.5, 'No window data', ha='center', va='center',
-                       transform=ax.transAxes)
-                ax.set_title(config_name)
-                continue
-
-        time_index = np.arange(len(windows_df))
-        window_sizes = windows_df[window_col].values
-
-        # Plot window size
-        ax.plot(time_index, window_sizes, linewidth=1.5, alpha=0.8, color='#2ca02c')
-
-        # Add breakpoints if provided
-        if breakpoints:
-            for bp in breakpoints:
-                ax.axvline(x=bp, color='red', linestyle='--', linewidth=1.5,
-                          alpha=0.6, label='True Breakpoint' if bp == breakpoints[0] else '')
-
-        # Add statistics
-        mean_window = window_sizes.mean()
-        std_window = window_sizes.std()
-        ax.axhline(y=mean_window, color='blue', linestyle=':', linewidth=1,
-                  alpha=0.5, label=f'Mean: {mean_window:.1f}')
-        ax.fill_between(time_index,
-                       mean_window - std_window,
-                       mean_window + std_window,
-                       alpha=0.2, color='blue',
-                       label=f'±1 SD: {std_window:.1f}')
-
-        ax.set_xlabel('Time Index')
-        ax.set_ylabel('Window Size')
-        ax.set_title(config_name, fontsize=10)
-        ax.legend(loc='upper right', fontsize=8)
-
-    # Hide unused subplots
-    for idx in range(n_configs, len(axes)):
-        axes[idx].set_visible(False)
-
-    plt.tight_layout()
-    save_path = save_dir / 'window_evolution_all_configs.png'
-    plt.savefig(save_path, bbox_inches='tight')
-    print(f"Saved: {save_path}")
-    plt.close()
-
-
 def plot_window_statistics_comparison(data, save_dir):
     """
     Compare window statistics (mean, std, min, max) across configurations.
@@ -300,7 +204,7 @@ def plot_window_statistics_comparison(data, save_dir):
 
     plt.tight_layout()
     save_path = save_dir / 'window_statistics_comparison.png'
-    plt.savefig(save_path, bbox_inches='tight')
+    plt.savefig(save_path, bbox_inches='tight', transparent=True)
     print(f"Saved: {save_path}")
     plt.close()
 
@@ -375,7 +279,7 @@ def plot_faithfulness_across_configs(data, save_dir):
 
     plt.tight_layout()
     save_path = save_dir / 'faithfulness_across_configs.png'
-    plt.savefig(save_path, bbox_inches='tight')
+    plt.savefig(save_path, bbox_inches='tight', transparent=True)
     print(f"Saved: {save_path}")
     plt.close()
 
@@ -460,7 +364,7 @@ def plot_ablation_across_configs(data, save_dir):
 
     plt.tight_layout()
     save_path = save_dir / 'ablation_across_configs.png'
-    plt.savefig(save_path, bbox_inches='tight')
+    plt.savefig(save_path, bbox_inches='tight', transparent=True)
     print(f"Saved: {save_path}")
     plt.close()
 
@@ -500,37 +404,65 @@ def compute_true_windows(n_timepoints, breakpoints):
     return true_windows
 
 
-def plot_true_vs_detected_by_n0(data, dataset_name, save_dir, breakpoints=None):
+def plot_true_vs_detected_by_n0(data, dataset_name, save_dir, breakpoints=None, rolling_mean_size=20):
     """
     Plot true vs detected window sizes, grouped by N0 parameter.
 
-    Creates separate plots for each N0 value to see how initial window
-    size affects detection accuracy.
+    Creates one figure per N0 with 3 rows (one per alpha) × 3 columns (one per bootstrap).
+    Each row has title $\\alpha = <value>$, each subplot has title $B = <value>$.
+
+    Parameters
+    ----------
+    rolling_mean_size : int
+        Window size for rolling mean calculation (default: 20)
     """
     if not data['windows'] or breakpoints is None:
         print("No window data or breakpoints - skipping true vs detected plots")
         return
 
-    # Parse N0 values from config names
+    # Parse N0, alpha and num_bootstrap values from config names
+    # Structure: n0_configs[n0][alpha] = [(config_name, bootstrap_val), ...]
     n0_configs = {}
     for config_name in data['configs']:
         if config_name not in data['windows']:
             continue
 
-        # Extract N0 from config name (format: N{N0}_alpha{alpha}_num_bootstrap{B})
+        # Extract N0, alpha and num_bootstrap from config name
+        # Format: N{N0}_alpha{alpha}_num_bootstrap{B} or similar
         try:
             parts = config_name.split('_')
-            n0_str = [p for p in parts if p.startswith('N')][0]
-            n0_val = int(n0_str.replace('N', ''))
+
+            # Find N0 value
+            n0_part = [p for p in parts if p.startswith('N') and p[1:].isdigit()]
+            if n0_part:
+                n0_val = int(n0_part[0].replace('N', ''))
+            else:
+                continue
+
+            # Find alpha value
+            alpha_part = [p for p in parts if p.startswith('alpha')]
+            if alpha_part:
+                alpha_val = float(alpha_part[0].replace('alpha', ''))
+            else:
+                continue
+
+            # Find num_bootstrap value
+            bootstrap_part = [p for p in parts if 'bootstrap' in p.lower()]
+            if bootstrap_part:
+                bootstrap_val = int(bootstrap_part[0].replace('numbootstrap', '').replace('bootstrap', ''))
+            else:
+                bootstrap_val = 0
 
             if n0_val not in n0_configs:
-                n0_configs[n0_val] = []
-            n0_configs[n0_val].append(config_name)
+                n0_configs[n0_val] = {}
+            if alpha_val not in n0_configs[n0_val]:
+                n0_configs[n0_val][alpha_val] = []
+            n0_configs[n0_val][alpha_val].append((config_name, bootstrap_val))
         except:
             continue
 
     if not n0_configs:
-        print("Could not parse N0 values from config names")
+        print("Could not parse N0/alpha values from config names")
         return
 
     # Sort N0 values
@@ -538,70 +470,99 @@ def plot_true_vs_detected_by_n0(data, dataset_name, save_dir, breakpoints=None):
 
     # Create one plot per N0 value
     for n0_val in n0_values:
-        configs_for_n0 = n0_configs[n0_val]
-        n_configs = len(configs_for_n0)
+        alpha_dict = n0_configs[n0_val]
+        alpha_values = sorted(alpha_dict.keys())
+        n_rows = len(alpha_values)
 
-        # Create subplot grid
-        n_cols = min(2, n_configs)
-        n_rows = (n_configs + n_cols - 1) // n_cols
+        # Determine number of columns (max bootstrap values across alphas)
+        n_cols = max(len(configs) for configs in alpha_dict.values())
+        n_cols = min(3, n_cols)  # Cap at 3 columns
 
-        fig, axes = plt.subplots(n_rows, n_cols, figsize=(12*n_cols, 8*n_rows))
-        fig.suptitle(f'{dataset_name}: True vs Detected Windows (N0={n0_val})',
-                     fontsize=14, fontweight='bold')
+        fig, axes = plt.subplots(n_rows, n_cols, figsize=(6*n_cols, 4*n_rows), sharey=True)
+        fig.suptitle(rf'$n_0 = {n0_val}$', fontsize=16, fontweight='bold')
 
-        # Flatten axes
-        if n_configs == 1:
-            axes = [axes]
-        else:
-            axes = axes.flatten() if n_rows > 1 or n_cols > 1 else [axes]
+        # Ensure axes is 2D array
+        if n_rows == 1 and n_cols == 1:
+            axes = np.array([[axes]])
+        elif n_rows == 1:
+            axes = np.array([axes])
+        elif n_cols == 1:
+            axes = axes.reshape(-1, 1)
 
-        for idx, config_name in enumerate(sorted(configs_for_n0)):
-            ax = axes[idx]
-            windows_df = data['windows'][config_name]
+        lines = []
+        labels = []
 
-            # Get detected windows
-            if 'window_mean' in windows_df.columns:
-                detected_windows = windows_df['window_mean'].values
-            elif 'windows_run_0' in windows_df.columns:
-                detected_windows = windows_df['windows_run_0'].values
-            else:
-                window_cols = [c for c in windows_df.columns if c.startswith('windows')]
-                if window_cols:
-                    detected_windows = windows_df[window_cols[0]].values
+        for row_idx, alpha_val in enumerate(alpha_values):
+            configs_for_alpha = alpha_dict[alpha_val]
+            # Sort by bootstrap value
+            configs_for_alpha.sort(key=lambda x: x[1])
+
+            for col_idx, (config_name, bootstrap_val) in enumerate(configs_for_alpha):
+                if col_idx >= n_cols:
+                    break
+
+                ax = axes[row_idx, col_idx]
+                windows_df = data['windows'][config_name]
+
+                # Get detected windows
+                if 'window_mean' in windows_df.columns:
+                    detected_windows = windows_df['window_mean'].values
+                elif 'windows_run_0' in windows_df.columns:
+                    detected_windows = windows_df['windows_run_0'].values
                 else:
-                    ax.text(0.5, 0.5, 'No window data', ha='center', va='center',
-                           transform=ax.transAxes)
-                    ax.set_title(config_name)
-                    continue
+                    window_cols = [c for c in windows_df.columns if c.startswith('windows')]
+                    if window_cols:
+                        detected_windows = windows_df[window_cols[0]].values
+                    else:
+                        ax.text(0.5, 0.5, 'No window data', ha='center', va='center',
+                               transform=ax.transAxes)
+                        ax.set_title(rf'$B = {bootstrap_val}$')
+                        continue
 
-            # Compute true windows
-            n_timepoints = len(detected_windows)
-            true_windows = compute_true_windows(n_timepoints, breakpoints)
+                # Compute true windows
+                n_timepoints = len(detected_windows)
+                true_windows = compute_true_windows(n_timepoints, breakpoints)
 
-            # Time series overlay (single panel)
-            time_index = np.arange(n_timepoints)
-            ax.plot(time_index, true_windows, label='True Window',
-                   color='green', linewidth=2, alpha=0.7)
-            ax.plot(time_index, detected_windows, label='Detected Window',
-                   color='blue', linewidth=1.5, alpha=0.7)
+                # Time series overlay
+                time_index = np.arange(n_timepoints)
+                l1, = ax.plot(time_index, true_windows, color='green', linewidth=2, alpha=0.7)
+                l2, = ax.plot(time_index, detected_windows, color='#3B75AF', linewidth=1.5, alpha=0.7)
 
-            # Mark breakpoints
-            for bp in breakpoints:
-                ax.axvline(x=bp, color='red', linestyle='--',
-                          linewidth=1.5, alpha=0.5)
+                # Add rolling mean for detected windows
+                rolling_mean = pd.Series(detected_windows).rolling(window=rolling_mean_size, center=True).mean()
+                l3, = ax.plot(time_index, rolling_mean, linewidth=2, alpha=0.9, color='red')
 
-            ax.set_xlabel('Timepoint')
-            ax.set_ylabel('Window Size')
-            ax.set_title(f'{config_name}\nTrue vs Detected Over Time')
-            ax.legend(loc='lower center', bbox_to_anchor=(0.5, -0.15), ncol=2, frameon=False)
+                # Mark breakpoints
+                for bp in breakpoints:
+                    ax.axvline(x=bp, color='orange', linestyle='--', linewidth=1.5, alpha=0.7)
 
-        # Hide unused subplots
-        for idx in range(n_configs, len(axes)):
-            axes[idx].set_visible(False)
+                # Collect legend handles from first subplot only
+                if row_idx == 0 and col_idx == 0:
+                    lines = [l1, l2, l3]
+                    labels = ['True Window', 'Detected Window', f'Rolling Mean ({rolling_mean_size})']
+
+                # Set labels
+                if row_idx == n_rows - 1:
+                    ax.set_xlabel('Timepoint')
+                if col_idx == 0:
+                    ax.set_ylabel(rf'$\alpha = {alpha_val}$', fontsize=12)
+
+                # Set subplot title (only B value)
+                ax.set_title(rf'$B = {bootstrap_val}$')
+
+            # Hide unused subplots in this row
+            for col_idx in range(len(configs_for_alpha), n_cols):
+                axes[row_idx, col_idx].set_visible(False)
+
+        # Add single centered legend at the bottom
+        fig.legend(lines, labels, loc='lower center', bbox_to_anchor=(0.5, -0.02),
+                  ncol=3, frameon=False, fontsize=10)
 
         plt.tight_layout()
+        plt.subplots_adjust(bottom=0.08)  # Make room for legend
+
         save_path = save_dir / f'true_vs_detected_N{n0_val:03d}.png'
-        plt.savefig(save_path, bbox_inches='tight')
+        plt.savefig(save_path, bbox_inches='tight', transparent=True)
         print(f"Saved: {save_path}")
         plt.close()
 
@@ -635,6 +596,12 @@ def main():
         choices=['geometric', 'arithmetic'],
         default=None,
         help='Window growth strategy to visualize: "geometric" or "arithmetic". If not specified, visualizes all available strategies.'
+    )
+    parser.add_argument(
+        '--rolling-mean-size',
+        type=int,
+        default=20,
+        help='Window size for rolling mean calculation (default: 20)'
     )
 
     args = parser.parse_args()
@@ -686,13 +653,6 @@ def main():
     print("\nGenerating visualizations...")
 
     try:
-        plot_window_evolution_per_config(data, dataset_display, save_dir, breakpoints)
-    except Exception as e:
-        print(f"Error in window evolution plots: {e}")
-        import traceback
-        traceback.print_exc()
-
-    try:
         plot_window_statistics_comparison(data, save_dir)
     except Exception as e:
         print(f"Error in window statistics comparison: {e}")
@@ -714,7 +674,7 @@ def main():
         traceback.print_exc()
 
     try:
-        plot_true_vs_detected_by_n0(data, dataset_display, save_dir, breakpoints)
+        plot_true_vs_detected_by_n0(data, dataset_display, save_dir, breakpoints, args.rolling_mean_size)
     except Exception as e:
         print(f"Error in true vs detected window comparison: {e}")
         import traceback

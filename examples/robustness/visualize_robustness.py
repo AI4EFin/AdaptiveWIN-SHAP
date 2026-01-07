@@ -187,7 +187,7 @@ class RobustnessVisualizer:
 
         if save_name:
             save_path = self.output_dir / f"{save_name}.png"
-            fig.savefig(save_path, dpi=300, bbox_inches='tight')
+            fig.savefig(save_path, dpi=300, bbox_inches='tight', transparent=True)
             print(f"Saved: {save_path}")
 
         return fig
@@ -265,7 +265,7 @@ class RobustnessVisualizer:
 
         if save_name:
             save_path = self.output_dir / f"{save_name}.png"
-            fig.savefig(save_path, dpi=300, bbox_inches='tight')
+            fig.savefig(save_path, dpi=300, bbox_inches='tight', transparent=True)
             print(f"Saved: {save_path}")
 
         return fig
@@ -329,7 +329,7 @@ class RobustnessVisualizer:
 
         if save_name:
             save_path = self.output_dir / f"{save_name}.png"
-            fig.savefig(save_path, dpi=300, bbox_inches='tight')
+            fig.savefig(save_path, dpi=300, bbox_inches='tight', transparent=True)
             print(f"Saved: {save_path}")
 
         return fig
@@ -408,7 +408,7 @@ class RobustnessVisualizer:
 
         if save_name:
             save_path = self.output_dir / f"{save_name}.png"
-            fig.savefig(save_path, dpi=300, bbox_inches='tight')
+            fig.savefig(save_path, dpi=300, bbox_inches='tight', transparent=True)
             print(f"Saved: {save_path}")
 
         return fig
@@ -492,7 +492,7 @@ class RobustnessVisualizer:
 
         if save_name:
             save_path = self.output_dir / f"{save_name}.png"
-            fig.savefig(save_path, dpi=300, bbox_inches='tight')
+            fig.savefig(save_path, dpi=300, bbox_inches='tight', transparent=True)
             print(f"Saved: {save_path}")
 
         return fig
@@ -605,7 +605,7 @@ class RobustnessVisualizer:
         fig.tight_layout()
 
         fig_path = report_dir / f"{output_name}.png"
-        fig.savefig(fig_path, dpi=300, bbox_inches='tight')
+        fig.savefig(fig_path, dpi=300, bbox_inches='tight', transparent=True)
         print(f"Summary figure saved: {fig_path}")
 
         plt.close(fig)
@@ -617,7 +617,8 @@ class RobustnessVisualizer:
         title: Optional[str] = None,
         save_name: Optional[str] = None,
         breakpoints: Optional[List[int]] = None,
-        show_statistics: bool = True
+        show_statistics: bool = True,
+        rolling_mean_size: int = 20
     ) -> plt.Figure:
         """
         Plot window size evolution over time.
@@ -636,6 +637,8 @@ class RobustnessVisualizer:
             Timepoints of regime breakpoints to mark with vertical lines
         show_statistics : bool
             Whether to show statistics panel
+        rolling_mean_size : int
+            Window size for rolling mean calculation (default: 20)
 
         Returns
         -------
@@ -654,7 +657,11 @@ class RobustnessVisualizer:
         # Plot mean if available
         if 'window_mean' in windows_df.columns:
             mean_vals = windows_df['window_mean'].values
-            ax.plot(windows_df.index, mean_vals, linewidth=2, label='Mean', color='blue')
+            ax.plot(windows_df.index, mean_vals, linewidth=2, label='Mean', color='#3B75AF')
+
+            # Add rolling mean
+            rolling_mean = pd.Series(mean_vals).rolling(window=rolling_mean_size, center=True).mean()
+            ax.plot(windows_df.index, rolling_mean, linewidth=2, alpha=0.9, color='red', label=f'Rolling Mean ({rolling_mean_size})')
 
             # Add ±1 std band if we can compute it
             if len(run_cols) > 1:
@@ -662,10 +669,15 @@ class RobustnessVisualizer:
                 ax.fill_between(windows_df.index,
                                mean_vals - std_vals,
                                mean_vals + std_vals,
-                               alpha=0.2, color='blue', label='±1 Std Dev')
+                               alpha=0.2, color='#3B75AF', label='±1 Std Dev')
         elif 'windows' in windows_df.columns:
             # Single run
-            ax.plot(windows_df.index, windows_df['windows'], linewidth=2, label='Window Size', color='blue')
+            window_vals = windows_df['windows'].values
+            ax.plot(windows_df.index, window_vals, linewidth=2, label='Window Size', color='#3B75AF')
+
+            # Add rolling mean
+            rolling_mean = pd.Series(window_vals).rolling(window=rolling_mean_size, center=True).mean()
+            ax.plot(windows_df.index, rolling_mean, linewidth=2, alpha=0.9, color='red', label=f'Rolling Mean ({rolling_mean_size})')
 
         # Mark breakpoints
         if breakpoints is not None:
@@ -695,7 +707,7 @@ class RobustnessVisualizer:
 
         if save_name:
             save_path = self.output_dir / f"{save_name}.png"
-            fig.savefig(save_path, dpi=300, bbox_inches='tight')
+            fig.savefig(save_path, dpi=300, bbox_inches='tight', transparent=True)
             print(f"Saved: {save_path}")
 
         return fig
@@ -831,7 +843,7 @@ class RobustnessVisualizer:
 
         if save_name:
             save_path = self.output_dir / f"{save_name}.png"
-            fig.savefig(save_path, dpi=300, bbox_inches='tight')
+            fig.savefig(save_path, dpi=300, bbox_inches='tight', transparent=True)
             print(f"Saved: {save_path}")
 
         return fig
@@ -920,7 +932,7 @@ class RobustnessVisualizer:
 
         if save_name:
             save_path = self.output_dir / f"{save_name}.png"
-            fig.savefig(save_path, dpi=300, bbox_inches='tight')
+            fig.savefig(save_path, dpi=300, bbox_inches='tight', transparent=True)
             print(f"Saved: {save_path}")
 
         return fig
@@ -931,7 +943,8 @@ class RobustnessVisualizer:
         dataset_name: str,
         breakpoints: List[int],
         title: Optional[str] = None,
-        save_name: Optional[str] = None
+        save_name: Optional[str] = None,
+        rolling_mean_size: int = 20
     ) -> plt.Figure:
         """
         Compare detected window sizes to true window sizes (distance to next breakpoint).
@@ -948,6 +961,8 @@ class RobustnessVisualizer:
             Plot title
         save_name : str, optional
             Filename to save
+        rolling_mean_size : int
+            Window size for rolling mean calculation (default: 20)
 
         Returns
         -------
@@ -980,11 +995,15 @@ class RobustnessVisualizer:
 
         # Panel 1: Time series overlay
         ax1.plot(timepoints, true_windows, label='True Window Size', linewidth=2, alpha=0.7, color='green')
-        ax1.plot(timepoints, detected_windows, label='Detected Window Size', linewidth=2, alpha=0.7, color='blue')
+        ax1.plot(timepoints, detected_windows, label='Detected Window Size', linewidth=2, alpha=0.7, color='#3B75AF')
+
+        # Add rolling mean for detected windows
+        rolling_mean = pd.Series(detected_windows).rolling(window=rolling_mean_size, center=True).mean()
+        ax1.plot(timepoints, rolling_mean, linewidth=2, alpha=0.9, color='red', label=f'Rolling Mean ({rolling_mean_size})')
 
         # Mark breakpoints
         for bp in breakpoints:
-            ax1.axvline(bp, color='red', linestyle='--', linewidth=1, alpha=0.5)
+            ax1.axvline(bp, color='orange', linestyle='--', linewidth=1, alpha=0.7)
 
         ax1.set_xlabel('Timepoint', fontsize=11)
         ax1.set_ylabel('Window Size', fontsize=11)
@@ -1037,7 +1056,7 @@ class RobustnessVisualizer:
 
         if save_name:
             save_path = self.output_dir / f"{save_name}.png"
-            fig.savefig(save_path, dpi=300, bbox_inches='tight')
+            fig.savefig(save_path, dpi=300, bbox_inches='tight', transparent=True)
             print(f"Saved: {save_path}")
 
         return fig

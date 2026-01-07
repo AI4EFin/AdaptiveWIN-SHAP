@@ -16,3 +16,8 @@ python examples/lstm_simulation.py
 ```bash
 ffmpeg -i run_0.mp4 -vf reverse run_0_rv.mp4
 ```
+
+### Visualizing the robustness results
+```bash
+python examples/robustness/visualize_robustness_benchmark.py --growth geometric --dataset piecewise_ar3 --test-type lpa_sensitivity
+```

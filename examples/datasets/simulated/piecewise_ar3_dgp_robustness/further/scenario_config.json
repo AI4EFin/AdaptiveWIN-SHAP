@@ -1,0 +1,67 @@
+{
+  "scenario_name": "further",
+  "scenario_type": "l2_distance_increase",
+  "max_pairwise_l2": 1.1434159348198711,
+  "baseline_reference": "piecewise_ar3",
+  "regimes": [
+    {
+      "regime_id": 0,
+      "time_range": [
+        0,
+        500
+      ],
+      "parameters": {
+        "phi_1": 0.85,
+        "phi_2": 0.05,
+        "phi_3": 0.03
+      },
+      "l2_distance_from_baseline": 0.06708203932499372
+    },
+    {
+      "regime_id": 1,
+      "time_range": [
+        500,
+        1000
+      ],
+      "parameters": {
+        "phi_1": 0.5,
+        "phi_2": -0.25,
+        "phi_3": 0.15
+      },
+      "l2_distance_from_baseline": 1.2578553175941976
+    },
+    {
+      "regime_id": 2,
+      "time_range": [
+        1000,
+        1500
+      ],
+      "parameters": {
+        "phi_1": -0.05,
+        "phi_2": 0.75,
+        "phi_3": 0.08
+      },
+      "l2_distance_from_baseline": 1.1061645447219868
+    }
+  ],
+  "generation_params": {
+    "T": 1500,
+    "noise_sigma": 1.0,
+    "regime_lengths": [
+      500,
+      500,
+      500
+    ],
+    "seed": 101
+  },
+  "stationarity_check": {
+    "regime_0_stationary": true,
+    "regime_1_stationary": true,
+    "regime_2_stationary": true
+  },
+  "pairwise_l2_distances": {
+    "regime_0_vs_1": 0.47634021455258213,
+    "regime_0_vs_2": 1.1412712210513327,
+    "regime_1_vs_2": 1.1434159348198711
+  }
+}

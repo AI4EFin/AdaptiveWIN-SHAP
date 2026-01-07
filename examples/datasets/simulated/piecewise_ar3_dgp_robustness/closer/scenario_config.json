@@ -1,0 +1,67 @@
+{
+  "scenario_name": "closer",
+  "scenario_type": "l2_distance_reduction",
+  "max_pairwise_l2": 0.6293250352560273,
+  "baseline_reference": "piecewise_ar3",
+  "regimes": [
+    {
+      "regime_id": 0,
+      "time_range": [
+        0,
+        500
+      ],
+      "parameters": {
+        "phi_1": 0.6033333333333334,
+        "phi_2": 0.15833333333333335,
+        "phi_3": 0.15833333333333335
+      },
+      "l2_distance_from_baseline": 0.3633409785128381
+    },
+    {
+      "regime_id": 1,
+      "time_range": [
+        500,
+        1000
+      ],
+      "parameters": {
+        "phi_1": 0.15833333333333335,
+        "phi_2": 0.6033333333333334,
+        "phi_3": 0.15833333333333335
+      },
+      "l2_distance_from_baseline": 0.3633409785128381
+    },
+    {
+      "regime_id": 2,
+      "time_range": [
+        1000,
+        1500
+      ],
+      "parameters": {
+        "phi_1": 0.15833333333333335,
+        "phi_2": 0.15833333333333335,
+        "phi_3": 0.6033333333333334
+      },
+      "l2_distance_from_baseline": 0.3633409785128381
+    }
+  ],
+  "generation_params": {
+    "T": 1500,
+    "noise_sigma": 1.0,
+    "regime_lengths": [
+      500,
+      500,
+      500
+    ],
+    "seed": 100
+  },
+  "stationarity_check": {
+    "regime_0_stationary": true,
+    "regime_1_stationary": true,
+    "regime_2_stationary": true
+  },
+  "pairwise_l2_distances": {
+    "regime_0_vs_1": 0.6293250352560273,
+    "regime_0_vs_2": 0.6293250352560273,
+    "regime_1_vs_2": 0.6293250352560273
+  }
+}

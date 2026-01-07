@@ -129,11 +129,17 @@ class SlidingWindowAnimator:
             )
             self._akbk_handles.append(hB)
 
-    def _rasterize(self):
-        """HiDPI-safe capture of current canvas as RGB np.array (H,W,3)."""
+    def _rasterize(self, with_alpha=False):
+        """HiDPI-safe capture of current canvas as np.array.
+
+        Args:
+            with_alpha: If True, return RGBA (H,W,4). If False, return RGB (H,W,3).
+        """
         self.fig.canvas.draw()
         try:
             rgba = np.asarray(self.fig.canvas.buffer_rgba())  # (H,W,4)
+            if with_alpha:
+                return rgba.copy()
             return rgba[..., :3].copy()
         except Exception:
             buf = np.frombuffer(self.fig.canvas.tostring_rgb(), dtype=np.uint8)
@@ -241,24 +247,68 @@ class SlidingWindowAnimator:
         )
 
     # ---------- export ----------
-    def save(self, path, fps=16, boomerang=True, codec="h264"):
-        """Save as .gif or .mp4."""
+    def save(self, path="frames/frame.png", fps=16, boomerang=True, codec="h264", transparent=True):
+        """Save as .gif, .mp4, .webm, or .png sequence.
+
+        Args:
+            path: Output file path. Use .webm for transparent video, or a path
+                  ending in .png to save as numbered PNG sequence (e.g., "frames/frame.png"
+                  will create frames/frame_0001.png, frames/frame_0002.png, etc.)
+            fps: Frames per second.
+            boomerang: If True, play forward then backward.
+            codec: Video codec. Use "h264" for mp4, "vp9" for webm with transparency.
+            transparent: If True, preserve alpha channel (requires .webm or .png output).
+        """
         if not (self.frames or self.states):
             raise RuntimeError("Nothing to save.")
-        frames = self.frames if self.frames else None
+
+        ext = path.lower().rsplit(".", 1)[-1]
+
+        # Re-render frames with alpha if needed and we have states
+        if transparent and self.states:
+            frames = []
+            old_record = self.record
+            self.record = False  # Don't re-record while re-rendering
+            for st in self.states:
+                self._render_state(st)
+                frames.append(self._rasterize(with_alpha=True))
+            self.record = old_record
+        else:
+            frames = self.frames if self.frames else None
+
         if frames:
             seq = frames
             if boomerang and len(seq) > 1:
                 seq = seq + seq[-2:0:-1]
-            ext = path.lower().rsplit(".", 1)[-1]
+
+            # PNG sequence for full transparency support
+            if ext == "png":
+                import imageio.v3 as iio
+                import os
+                base, _ = os.path.splitext(path)
+                os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+                for i, frame in enumerate(seq):
+                    frame_path = f"{base}_{i:04d}.png"
+                    iio.imwrite(frame_path, frame)
+                return
+
             if ext == "gif":
                 import imageio.v3 as iio
                 iio.imwrite(path, seq, duration=1.0 / fps, loop=0)
                 return
-            if ext in ("mp4", "mov", "mkv"):
+
+            if ext == "webm" and transparent:
+                import imageio.v3 as iio
+                # VP9 codec supports alpha channel in WebM
+                iio.imwrite(path, seq, fps=fps, codec="vp9",
+                            output_params=["-pix_fmt", "yuva420p"])
+                return
+
+            if ext in ("mp4", "mov", "mkv", "webm"):
                 import imageio.v3 as iio
                 iio.imwrite(path, seq, fps=fps, codec=codec)
                 return
+
         # fallback writer
         from matplotlib.animation import FFMpegWriter
         writer = FFMpegWriter(fps=fps)
