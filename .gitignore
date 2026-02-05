@@ -177,3 +177,5 @@ data
 .idea
 
 *.mp4
+
+**/frames/**

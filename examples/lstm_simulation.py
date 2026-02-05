@@ -1,74 +1,19 @@
+"""
+AdaptiveWIN-SHAP Window Detection Example
+
+This script demonstrates how to use the AdaptiveWIN-SHAP library with
+Monte Carlo pre-computed critical values for change point detection.
+"""
 import glob
 import os
 import timeit
 
 import numpy as np
-
 import torch
-import torch.nn as nn
 import pandas as pd
 
-from adaptivewinshap import AdaptiveModel, ChangeDetector, store_init_kwargs, AdaptiveWinShap
+from adaptivewinshap import AdaptiveLSTM, ChangeDetector, AdaptiveWinShap
 
-class AdaptiveLSTM(AdaptiveModel):
-    @store_init_kwargs
-    def __init__(self, device, seq_length=3, input_size=1, hidden=16, layers=1, dropout=0.2, batch_size=512, lr=1e-12, epochs=50, type_precision=np.float32):
-        super().__init__(device=device, batch_size=batch_size, lr=lr, epochs=epochs, type_precision=type_precision)
-        self.lstm = nn.LSTM(input_size, hidden, num_layers=layers, batch_first=True,
-                            dropout=dropout if layers > 1 else 0.0)
-        self.fc = nn.Linear(hidden, 1)
-        self.seq_length = seq_length
-        self.input_size = input_size
-        self.hidden = hidden
-        self.layers = layers
-        self.dropout = dropout
-
-
-    def forward(self, x):
-        out, _ = self.lstm(x)           # [B,L,H]
-        yhat = self.fc(out[:, -1, :])   # [B,1]
-        return yhat.squeeze(-1)
-
-    def prepare_data(self, window, start_abs_idx):
-        """
-        window: [n, F] array where F = 1 (target only) or F > 1 (target + covariates)
-        """
-        L = self.seq_length
-        F = window.shape[1] if window.ndim == 2 else 1
-        n = len(window)
-
-        if n <= L:
-            return None, None, None
-
-        # Ensure window is 2D
-        if window.ndim == 1:
-            window = window[:, None]  # [n, 1]
-
-        # Create sequences: for each time t, use [t-L:t] to predict t
-        X_list = []
-        y_list = []
-        for i in range(L, n):
-            X_list.append(window[i-L:i])  # [L, F]
-            y_list.append(window[i, 0])   # target is always first column
-
-        X = np.array(X_list, dtype=np.float32)  # [N, L, F]
-        y = np.array(y_list, dtype=np.float32)  # [N]
-
-        t_abs = np.arange(start_abs_idx + L, start_abs_idx + n, dtype=np.int64)
-
-        X_tensor = torch.from_numpy(X)
-        y_tensor = torch.from_numpy(y)
-        return X_tensor, y_tensor, t_abs
-
-    @torch.no_grad()
-    def predict(self, x: np.ndarray) -> np.ndarray:
-        # x_flat: [N, L*F] -> [N, L, F]
-        # N = x_flat.shape[0]
-        # F = input_size
-        # x = x_flat.reshape(N, L, F)
-        xt = torch.tensor(x, dtype=torch.float32, device=self.device)
-        preds = model(xt)  # [N]
-        return preds.detach().cpu().numpy().reshape(-1, 1)  # SHAP expects 2D
 
 if __name__ == "__main__":
     import argparse
@@ -84,21 +29,30 @@ if __name__ == "__main__":
     parser.add_argument('--step', type=int, default=1,
                         help='Step size for detection. Represents how many points we should skip in J_k for faster computation (default: 1)')
     parser.add_argument('--alpha', type=float, default=0.95,
-                        help='The quantile of the bootstrap distribution used to make the decision (default: 0.95)')
+                        help='The quantile of the critical value distribution (default: 0.95)')
     parser.add_argument('--num-runs', type=int, default=1,
                         help='Number of detection runs (default: 1)')
     parser.add_argument('--growth', type=str, default='geometric', choices=['arithmetic', 'geometric'],
                         help='Window growth strategy: arithmetic or geometric (default: geometric)')
     parser.add_argument('--growth-base', type=float, default=1.41421356237,
                         help='Base for geometric growth (default: ~np.sqrt(2)')
-    parser.add_argument('--num-bootstrap', type=int, default=30,
-                        help='The number of bootstrap samples for the test statistic (default: 30)')
+    # Monte Carlo critical value arguments
+    parser.add_argument('--mc-reps', type=int, default=300,
+                        help='Number of Monte Carlo replications for CV computation (default: 100)')
+    parser.add_argument('--penalty-factor', type=float, default=0.05,
+                        help='Spokoiny penalty factor lambda for CV adjustment (default: 0.05)')
+    parser.add_argument('--cv-file', type=str, default=None,
+                        help='Path to pre-computed critical values CSV (skip computation if provided)')
+    parser.add_argument('--save-cv', action='store_true',
+                        help='Save computed critical values to file')
+    parser.add_argument('--video-format', type=str, default='mp4', choices=['mp4', 'webm', 'gif', 'png'],
+                        help='Video format for animation (default: mp4). Use webm for transparent background.')
     args = parser.parse_args()
 
     DEVICE = "cpu"
     if torch.cuda.is_available():
         DEVICE = "cuda"
-    elif torch.mps.is_available():
+    elif torch.backends.mps.is_available():
         DEVICE = "mps"
 
     # ============================================================
@@ -178,10 +132,18 @@ if __name__ == "__main__":
         print(f"Data shape: {data.shape} (univariate)")
 
     # Initialize model with dataset-specific parameters
-    model = AdaptiveLSTM(DEVICE, seq_length=LSTM_SEQ_LEN, input_size=LSTM_INPUT_SIZE,
-                         hidden=LSTM_HIDDEN, layers=LSTM_LAYERS, dropout=LSTM_DROPOUT,
-                         batch_size=LSTM_BATCH, lr=LSTM_LR, epochs=LSTM_EPOCHS,
-                         type_precision=np.float64)
+    model = AdaptiveLSTM(
+        DEVICE,
+        seq_length=LSTM_SEQ_LEN,
+        input_size=LSTM_INPUT_SIZE,
+        hidden=LSTM_HIDDEN,
+        layers=LSTM_LAYERS,
+        dropout=LSTM_DROPOUT,
+        batch_size=LSTM_BATCH,
+        lr=LSTM_LR,
+        epochs=LSTM_EPOCHS,
+        type_precision=np.float64
+    )
 
     cd = ChangeDetector(model, data, debug=False, force_cpu=True)
 
@@ -191,26 +153,73 @@ if __name__ == "__main__":
     JUMP = args.jump
     STEP = args.step
     ALPHA = args.alpha
-    NUM_BOOTSTRAP = args.num_bootstrap
 
-    out_dir = os.path.join("examples", f"results/LSTM/{dataset_name}/{args.growth}/Jump_{JUMP}_N0_{N_0}")
+    out_dir = os.path.join("examples", f"results/LSTM/{dataset_name}/{args.growth}/Jump_{JUMP}_N0_{N_0}_lambda_{args.penalty_factor}")
     os.makedirs(out_dir, exist_ok=True)
 
     print(f"Output directory: {out_dir}")
-    print(f"Parameters: N_0={N_0}, JUMP={JUMP}, NUM_RUNS={args.num_runs}, GROWTH={args.growth}, GROWTH_BASE={args.growth_base}, NUM_BOOTSTRAP={NUM_BOOTSTRAP}")
+    print(f"Parameters: N_0={N_0}, JUMP={JUMP}, NUM_RUNS={args.num_runs}, GROWTH={args.growth}, GROWTH_BASE={args.growth_base}")
+    print(f"MC parameters: mc_reps={args.mc_reps}, penalty_factor={args.penalty_factor}")
+    print(f"Video format: {args.video_format}" + (" (transparent)" if args.video_format == 'webm' else ""))
     print()
+
+    # ============================================================
+    # Critical Value Computation or Loading
+    # ============================================================
+    cv_path = os.path.join(out_dir, "critical_values.csv")
+
+    if args.cv_file:
+        # Load pre-computed critical values
+        print(f"Loading critical values from: {args.cv_file}")
+        cd.load_critical_values(args.cv_file)
+    elif os.path.exists(cv_path) and not args.save_cv:
+        # Load existing CV file
+        print(f"Loading existing critical values from: {cv_path}")
+        cd.load_critical_values(cv_path)
+    else:
+        # Compute critical values
+        print("Computing Monte Carlo critical values...")
+        cd.precompute_critical_values(
+            data=data,
+            n_0=N_0,
+            mc_reps=args.mc_reps,
+            alpha=ALPHA,
+            search_step=STEP,
+            min_seg=MIN_SEG,
+            penalty_factor=args.penalty_factor,
+            growth_base=args.growth_base,
+            verbose=True
+        )
+
+        if args.save_cv or True:  # Always save for reproducibility
+            cd.save_critical_values(cv_path)
 
     # ============================================================
     # Window Size Detection
     # ============================================================
-    print("Starting window size detection...")
+    print("\nStarting window size detection...")
     num_runs = args.num_runs
     for run in range(num_runs):
-        print(f"Run {run}")
+        print(f"\nRun {run}")
         out_csv = os.path.join(out_dir, f"run_{run}.csv")
-        results = cd.detect(min_window=MIN_SEG, n_0=N_0, jump=JUMP, search_step=STEP, alpha=ALPHA, num_bootstrap=NUM_BOOTSTRAP,
-                        t_workers=10, b_workers=10, one_b_threads=1, save_path=f"{out_dir}/run_{run}.mp4",
-                        growth=args.growth, growth_base=args.growth_base)
+
+        # Determine video save path based on format
+        if args.video_format == 'png':
+            video_path = f"{out_dir}/frames/run_{run}.png"  # Creates run_0_0001.png, etc.
+        else:
+            video_path = f"{out_dir}/run_{run}.{args.video_format}"
+
+        results = cd.detect(
+            min_window=MIN_SEG,
+            n_0=N_0,
+            jump=JUMP,
+            search_step=STEP,
+            alpha=ALPHA,
+            t_workers=10,
+            save_path=video_path,
+            growth=args.growth,
+            growth_base=args.growth_base
+        )
 
         pd.DataFrame(results).to_csv(out_csv)
         print(f"Saved results to: {out_csv}")
@@ -239,6 +248,6 @@ if __name__ == "__main__":
     print("Window detection complete!")
     print("="*60)
     print(f"Results saved to: {out_dir}")
+    print(f"Critical values saved to: {cv_path}")
     print(f"Use these windows for benchmarking with benchmark.py")
     print("="*60)
-

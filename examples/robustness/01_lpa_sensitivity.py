@@ -28,63 +28,8 @@ from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from adaptivewinshap import AdaptiveModel, ChangeDetector, store_init_kwargs
+from adaptivewinshap import AdaptiveLSTM, ChangeDetector
 from benchmark import run_benchmark
-
-
-class AdaptiveLSTM(AdaptiveModel):
-    """LSTM model for AdaptiveWinShap (copied from lstm_simulation.py)."""
-
-    @store_init_kwargs
-    def __init__(self, device, seq_length=3, input_size=1, hidden=16, layers=1,
-                 dropout=0.2, batch_size=512, lr=1e-12, epochs=50, type_precision=np.float32):
-        super().__init__(device=device, batch_size=batch_size, lr=lr, epochs=epochs,
-                         type_precision=type_precision)
-        self.lstm = nn.LSTM(input_size, hidden, num_layers=layers, batch_first=True,
-                            dropout=dropout if layers > 1 else 0.0)
-        self.fc = nn.Linear(hidden, 1)
-        self.seq_length = seq_length
-        self.input_size = input_size
-        self.hidden = hidden
-        self.layers = layers
-        self.dropout = dropout
-
-    def forward(self, x):
-        out, _ = self.lstm(x)
-        yhat = self.fc(out[:, -1, :])
-        return yhat.squeeze(-1)
-
-    def prepare_data(self, window, start_abs_idx):
-        """Prepare sequences from window."""
-        L = self.seq_length
-        F = window.shape[1] if window.ndim == 2 else 1
-        n = len(window)
-
-        if n <= L:
-            return None, None, None
-
-        if window.ndim == 1:
-            window = window[:, None]
-
-        X_list = []
-        y_list = []
-        for i in range(L, n):
-            X_list.append(window[i-L:i])
-            y_list.append(window[i, 0])
-
-        X = np.array(X_list, dtype=np.float32)
-        y = np.array(y_list, dtype=np.float32)
-        t_abs = np.arange(start_abs_idx + L, start_abs_idx + n, dtype=np.int64)
-
-        X_tensor = torch.from_numpy(X)
-        y_tensor = torch.from_numpy(y)
-        return X_tensor, y_tensor, t_abs
-
-    @torch.no_grad()
-    def predict(self, x: np.ndarray) -> np.ndarray:
-        xt = torch.tensor(x, dtype=torch.float32, device=self.device)
-        preds = self(xt)
-        return preds.detach().cpu().numpy().reshape(-1, 1)
 
 
 class LPASensitivityExperiment:
@@ -112,8 +57,9 @@ class LPASensitivityExperiment:
             return "mps"
         return "cpu"
 
-    def run_lpa_detection(self, dataset_name, N0, alpha, num_bootstrap,
-                          temp_dir, n_runs=1, growth="geometric", growth_base=2.0):
+    def run_lpa_detection(self, dataset_name, N0, alpha, mc_reps,
+                          temp_dir, n_runs=1, growth="geometric", growth_base=2.0,
+                          penalty_factor=0.25):
         """
         Run LPA window detection with specified parameters.
 
@@ -122,10 +68,18 @@ class LPASensitivityExperiment:
 
         Parameters:
         -----------
+        N0 : int
+            Initial window size
+        alpha : float
+            Significance level
+        mc_reps : int
+            Number of Monte Carlo replications for CV computation
         growth : str
             Window growth strategy: "arithmetic" or "geometric"
         growth_base : float
             Base for geometric growth (only used if growth="geometric")
+        penalty_factor : float
+            Spokoiny adjustment factor
 
         Returns:
         --------
@@ -171,6 +125,26 @@ class LPASensitivityExperiment:
 
         cd = ChangeDetector(model, data, debug=False, force_cpu=True)
 
+        # Compute or load critical values
+        cv_path = temp_dir / "critical_values.csv"
+        if cv_path.exists():
+            print(f"Loading critical values from: {cv_path}")
+            cd.load_critical_values(str(cv_path))
+        else:
+            print(f"Computing Monte Carlo critical values (mc_reps={mc_reps})...")
+            cd.precompute_critical_values(
+                data=data,
+                n_0=N0,
+                mc_reps=mc_reps,
+                alpha=alpha,
+                search_step=2,
+                min_seg=4,
+                penalty_factor=penalty_factor,
+                growth_base=growth_base,
+                verbose=True
+            )
+            cd.save_critical_values(str(cv_path))
+
         # Run detection (jump fixed at 1 for full detection)
         start_time = time.time()
 
@@ -190,10 +164,7 @@ class LPASensitivityExperiment:
                 jump=1,  # Fixed at 1 - not a methodological parameter
                 search_step=2,
                 alpha=alpha,
-                num_bootstrap=num_bootstrap,
                 t_workers=10,
-                b_workers=10,
-                one_b_threads=1,
                 debug_anim=False,
                 save_path=None,
                 growth=growth,
@@ -433,7 +404,7 @@ class LPASensitivityExperiment:
         dataset_name : str
             Dataset to test on
         param_grid : dict
-            Dictionary with keys: N0, alpha, num_bootstrap
+            Dictionary with keys: N0, alpha, mc_reps
             Each value is a list of parameters to test
             Note: jump is fixed at 1 (not tested)
         n_runs : int
@@ -492,7 +463,7 @@ class LPASensitivityExperiment:
                         dataset_name=dataset_name,
                         N0=params['N0'],
                         alpha=params['alpha'],
-                        num_bootstrap=params['num_bootstrap'],
+                        mc_reps=params['mc_reps'],
                         temp_dir=temp_dir,
                         n_runs=n_runs,
                         growth=params.get('growth', 'geometric'),
@@ -590,7 +561,7 @@ def main():
         param_grid = {
             'N0': [50, 100],
             'alpha': [0.95],
-            'num_bootstrap': [10, 50],
+            'mc_reps': [10, 50],
             'growth': ['geometric'],
             'growth_base': [1.41421356237]  # sqrt(2)
         }
@@ -599,7 +570,7 @@ def main():
         param_grid = {
             'N0': [25, 50, 75, 100],
             'alpha': [0.90, 0.95, 0.99],
-            'num_bootstrap': [10, 30, 50],
+            'mc_reps': [10, 30, 50],
             'growth': ['geometric'],
             'growth_base': [1.41421356237]  # 2.0 and sqrt(2)
         }

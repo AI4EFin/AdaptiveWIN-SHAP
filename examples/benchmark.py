@@ -24,68 +24,7 @@ from benchmarking import (
     RollingWindowSHAP,
     TimeShapWrapper
 )
-from adaptivewinshap import AdaptiveWinShap, AdaptiveModel, store_init_kwargs
-
-
-class AdaptiveLSTM(AdaptiveModel):
-    """LSTM model for AdaptiveWinShap."""
-
-    @store_init_kwargs
-    def __init__(self, device, seq_length=3, input_size=1, hidden=16, layers=1,
-                 dropout=0.2, batch_size=512, lr=1e-12, epochs=50, type_precision=np.float32):
-        import torch.nn as nn
-        super().__init__(device=device, batch_size=batch_size, lr=lr, epochs=epochs,
-                         type_precision=type_precision)
-        self.lstm = nn.LSTM(input_size, hidden, num_layers=layers, batch_first=True,
-                            dropout=dropout if layers > 1 else 0.0)
-        self.fc = nn.Linear(hidden, 1)
-        self.seq_length = seq_length
-        self.input_size = input_size
-        self.hidden = hidden
-        self.layers = layers
-        self.dropout = dropout
-
-    def forward(self, x):
-        out, _ = self.lstm(x)
-        yhat = self.fc(out[:, -1, :])
-        return yhat.squeeze(-1)
-
-    def prepare_data(self, window, start_abs_idx):
-        """
-        window: [n, F] array where F = 1 (target only) or F > 1 (target + covariates)
-        """
-        L = self.seq_length
-        F = window.shape[1] if window.ndim == 2 else 1
-        n = len(window)
-
-        if n <= L:
-            return None, None, None
-
-        # Ensure window is 2D
-        if window.ndim == 1:
-            window = window[:, None]  # [n, 1]
-
-        # Create sequences: for each time t, use [t-L:t] to predict t
-        X_list = []
-        y_list = []
-        for i in range(L, n):
-            X_list.append(window[i-L:i])  # [L, F]
-            y_list.append(window[i, 0])   # target is always first column
-
-        X = np.array(X_list, dtype=np.float32)  # [N, L, F]
-        y = np.array(y_list, dtype=np.float32)  # [N]
-
-        t_abs = np.arange(start_abs_idx + L, start_abs_idx + n, dtype=np.int64)
-
-        X_tensor = torch.from_numpy(X)
-        y_tensor = torch.from_numpy(y)
-        return X_tensor, y_tensor, t_abs
-
-    @torch.no_grad()
-    def predict(self, x: np.ndarray) -> np.ndarray:
-        xt = torch.tensor(x, dtype=torch.float32, device=self.device)
-        preds = self(xt)
-        return preds.detach().cpu().numpy().reshape(-1, 1)
+from adaptivewinshap import AdaptiveWinShap, AdaptiveLSTM
 
 
 def run_benchmark(dataset_path, output_dir, device='cpu', verbose=True,
