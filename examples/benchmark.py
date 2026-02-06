@@ -554,8 +554,10 @@ if __name__ == "__main__":
                         help='Jump value used in window detection (default: 1)')
     parser.add_argument('--rolling-mean-window', type=int, default=75,
                         help='Window size for rolling mean smoothing of adaptive windows (default: 75)')
-    parser.add_argument('--growth', type=str, default='geometric', choices=['arithmetic', 'geometric'],
-                        help='Window growth strategy used in detection: arithmetic or geometric (default: geometric)')
+    parser.add_argument('--growth', type=str, default='geometric',
+                        help='Window growth strategy (default: geometric)')
+    parser.add_argument('--penalty-factor', type=float, default=0.05,
+                        help='Spokoiny penalty factor lambda used in window detection (default: 0.05)')
     args = parser.parse_args()
 
     # Configuration
@@ -589,7 +591,7 @@ if __name__ == "__main__":
 
         # Paths
         dataset_path = f"examples/datasets/simulated/{dataset_name}/data.csv"
-        output_dir = f"examples/results/benchmark_{dataset_name}"
+        output_dir = f"examples/results/benchmark_{dataset_name}/N0_{args.n0}_lambda_{args.penalty_factor}"
 
         # Hyperparameters for simulated data
         HIDDEN_SIZE = 16
@@ -603,8 +605,8 @@ if __name__ == "__main__":
         ROLLING_WINDOW_SIZE = 100
         ROLLING_STRIDE = 1
 
-        # Pre-computed windows path
-        PRECOMPUTED_WINDOWS = f"examples/results/LSTM/{dataset_name}/{args.growth}/Jump_{args.jump}_N0_{args.n0}/windows.csv"
+        # Pre-computed windows path (includes lambda parameter)
+        PRECOMPUTED_WINDOWS = f"examples/results/LSTM/{dataset_name}/Jump_{args.jump}_N0_{args.n0}_lambda_{args.penalty_factor}/windows.csv"
 
         print("="*60)
         print("SHAP Methods Benchmarking - Simulated Data")
@@ -612,6 +614,7 @@ if __name__ == "__main__":
         print(f"Device: {DEVICE}")
         print(f"Dataset: {dataset_name}")
         print(f"Dataset config: seq_length={SEQ_LENGTH}, n_covariates={config['n_covariates']}")
+        print(f"LPA params: N0={args.n0}, Jump={args.jump}, Lambda={args.penalty_factor}")
         print(f"Dataset path: {dataset_path}")
         print(f"Windows path: {PRECOMPUTED_WINDOWS}")
         print(f"Output: {output_dir}")
@@ -666,7 +669,7 @@ if __name__ == "__main__":
         # Pre-computed windows path (matching lstm_empirical.py output)
         JUMP = 1
         N_0 = 72
-        PRECOMPUTED_WINDOWS = f"examples/results/LSTM/empirical/{args.growth}/Jump_{JUMP}_N0_{N_0}/windows.csv"
+        PRECOMPUTED_WINDOWS = f"examples/results/LSTM/empirical/Jump_{JUMP}_N0_{N_0}_lambda_{args.penalty_factor}/windows.csv"
 
         print("="*60)
         print("SHAP Methods Benchmarking - Empirical Data")
@@ -674,6 +677,8 @@ if __name__ == "__main__":
         print(f"Device: {DEVICE}")
         print(f"Dataset: {dataset_path}")
         print(f"Date Range: {DATE_START} to {DATE_END}")
+        print(f"LPA params: N0={N_0}, Jump={JUMP}, Lambda={args.penalty_factor}")
+        print(f"Windows path: {PRECOMPUTED_WINDOWS}")
         print(f"Output: {output_dir}")
         print("="*60)
 

@@ -21,7 +21,7 @@ NUM_BOOTSTRAP=30
 JUMP=1
 STEP=2
 NUM_RUNS=1
-GROWTH="geometric"  # Options: "arithmetic" or "geometric"
+GROWTH="geometric"
 GROWTH_BASE=1.41421356237     # Base for geometric growth
 
 

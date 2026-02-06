@@ -833,11 +833,15 @@ def main():
     parser.add_argument('--data-type', type=str, default='simulated',
                         choices=['simulated', 'empirical'],
                         help='Dataset type (default: simulated)')
+    parser.add_argument('--n0', type=int, default=75,
+                        help='N0 value used in window detection (default: 75)')
+    parser.add_argument('--penalty-factor', type=float, default=0.05,
+                        help='Spokoiny penalty factor lambda used in window detection (default: 0.05)')
     args = parser.parse_args()
 
     if args.data_type == "simulated":
-        # Simulated dataset results directory
-        results_dir = f'examples/results/benchmark_{args.dataset}'
+        # Simulated dataset results directory (includes N0 and lambda)
+        results_dir = f'examples/results/benchmark_{args.dataset}/N0_{args.n0}_lambda_{args.penalty_factor}'
     elif args.data_type == "empirical":
         # Empirical dataset results directory
         results_dir = 'examples/results/benchmark_empirical'

@@ -19,7 +19,7 @@ datasets=(
 N0=100
 JUMP=1
 ROLLING_MEAN_WINDOW=10
-GROWTH="geometric"  # Options: "arithmetic" or "geometric" (must match simulation run)
+GROWTH="geometric"
 
 # Track results
 declare -a results

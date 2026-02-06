@@ -5,17 +5,14 @@ This script creates comprehensive visualizations for LPA parameter sensitivity
 analysis, including individual parameter effects and aggregated summaries.
 
 Usage:
-    # Visualize single dataset with geometric growth
-    python examples/robustness/visualize_lpa_sensitivity.py --dataset piecewise_ar3 --growth geometric
-
-    # Visualize all datasets with arithmetic growth
-    python examples/robustness/visualize_lpa_sensitivity.py --all-datasets --growth arithmetic
-
-    # Visualize all growth strategies (no --growth flag)
+    # Visualize single dataset
     python examples/robustness/visualize_lpa_sensitivity.py --dataset piecewise_ar3
 
+    # Visualize all datasets
+    python examples/robustness/visualize_lpa_sensitivity.py --all-datasets
+
     # Enable window analysis
-    python examples/robustness/visualize_lpa_sensitivity.py --dataset piecewise_ar3 --growth geometric --window-analysis
+    python examples/robustness/visualize_lpa_sensitivity.py --dataset piecewise_ar3 --window-analysis
 """
 
 import argparse
@@ -52,7 +49,7 @@ def visualize_single_dataset(
     window_analysis : bool
         Whether to create window analysis plots
     growth_strategy : str
-        Window growth strategy to visualize: 'geometric', 'arithmetic', or None for all
+        Window growth strategy to visualize (kept for backwards compatibility)
     """
     print(f"\n{'='*80}")
     print(f"Visualizing LPA Sensitivity: {dataset_name}")
@@ -350,7 +347,7 @@ def create_cross_dataset_summary(
     datasets : list
         List of dataset names
     growth_strategy : str
-        Window growth strategy to visualize: 'geometric', 'arithmetic', or None for all
+        Window growth strategy to visualize (kept for backwards compatibility)
     """
     print(f"\n{'='*80}")
     print("Creating Cross-Dataset Summary")
@@ -510,9 +507,9 @@ def main():
     parser.add_argument(
         '--growth',
         type=str,
-        choices=['geometric', 'arithmetic'],
-        default=None,
-        help='Window growth strategy to visualize: "geometric" or "arithmetic". If not specified, visualizes all available strategies.'
+        choices=['geometric'],
+        default='geometric',
+        help='Window growth strategy (geometric only, kept for backwards compatibility)'
     )
 
     args = parser.parse_args()

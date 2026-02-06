@@ -36,7 +36,7 @@ datasets=(
 N0=75
 JUMP=1
 NUM_RUNS=9
-GROWTH="geometric"  # Options: "arithmetic" or "geometric"
+GROWTH="geometric"
 GROWTH_BASE=2.0     # Base for geometric growth
 
 # Track results

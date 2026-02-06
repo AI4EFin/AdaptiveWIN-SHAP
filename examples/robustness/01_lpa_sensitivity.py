@@ -75,9 +75,9 @@ class LPASensitivityExperiment:
         mc_reps : int
             Number of Monte Carlo replications for CV computation
         growth : str
-            Window growth strategy: "arithmetic" or "geometric"
+            Window growth strategy (geometric only)
         growth_base : float
-            Base for geometric growth (only used if growth="geometric")
+            Base for geometric growth
         penalty_factor : float
             Spokoiny adjustment factor
 
@@ -437,14 +437,9 @@ class LPASensitivityExperiment:
         for combo in tqdm(combinations, desc=f"Grid search on {dataset_name}"):
             params = dict(zip(keys, combo))
 
-            # Get growth strategy and create subdirectory
-            growth_strategy = params.get('growth', 'arithmetic')
-            growth_output = dataset_output / growth_strategy
-            growth_output.mkdir(parents=True, exist_ok=True)
-
             # Create temp directory for this run
             param_str = "_".join([f"{k}{v}" for k, v in params.items()])
-            temp_dir = growth_output / f"temp_{param_str}"
+            temp_dir = dataset_output / f"temp_{param_str}"
 
             if benchmark_only:
                 # Check if temp directory and windows.csv exist
@@ -458,7 +453,7 @@ class LPASensitivityExperiment:
 
             try:
                 if not benchmark_only:
-                    # Step 1: Run LPA detection (jump=1 fixed)
+                    # Step 1: Run LPA detection (jump=1 fixed, geometric growth only)
                     detection_results = self.run_lpa_detection(
                         dataset_name=dataset_name,
                         N0=params['N0'],
@@ -466,8 +461,9 @@ class LPASensitivityExperiment:
                         mc_reps=params['mc_reps'],
                         temp_dir=temp_dir,
                         n_runs=n_runs,
-                        growth=params.get('growth', 'geometric'),
-                        growth_base=params.get('growth_base', 2.0)
+                        growth="geometric",
+                        growth_base=params.get('growth_base', 1.41421356237),
+                        penalty_factor=params.get('penalty_factor', 0.05)
                     )
                 else:
                     # Load existing detection results from windows.csv
@@ -562,7 +558,7 @@ def main():
             'N0': [50, 100],
             'alpha': [0.95],
             'mc_reps': [10, 50],
-            'growth': ['geometric'],
+            'penalty_factor': [0.05],
             'growth_base': [1.41421356237]  # sqrt(2)
         }
     else:
@@ -571,8 +567,8 @@ def main():
             'N0': [25, 50, 75, 100],
             'alpha': [0.90, 0.95, 0.99],
             'mc_reps': [10, 30, 50],
-            'growth': ['geometric'],
-            'growth_base': [1.41421356237]  # 2.0 and sqrt(2)
+            'penalty_factor': [0.0, 0.05, 0.15, 0.25],
+            'growth_base': [1.41421356237]  # sqrt(2)
         }
 
     print("="*60)

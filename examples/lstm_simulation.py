@@ -32,8 +32,8 @@ if __name__ == "__main__":
                         help='The quantile of the critical value distribution (default: 0.95)')
     parser.add_argument('--num-runs', type=int, default=1,
                         help='Number of detection runs (default: 1)')
-    parser.add_argument('--growth', type=str, default='geometric', choices=['arithmetic', 'geometric'],
-                        help='Window growth strategy: arithmetic or geometric (default: geometric)')
+    parser.add_argument('--growth', type=str, default='geometric',
+                        help='Window growth strategy (default: geometric)')
     parser.add_argument('--growth-base', type=float, default=1.41421356237,
                         help='Base for geometric growth (default: ~np.sqrt(2)')
     # Monte Carlo critical value arguments
@@ -154,11 +154,11 @@ if __name__ == "__main__":
     STEP = args.step
     ALPHA = args.alpha
 
-    out_dir = os.path.join("examples", f"results/LSTM/{dataset_name}/{args.growth}/Jump_{JUMP}_N0_{N_0}_lambda_{args.penalty_factor}")
+    out_dir = os.path.join("examples", f"results/LSTM/{dataset_name}/Jump_{JUMP}_N0_{N_0}_lambda_{args.penalty_factor}")
     os.makedirs(out_dir, exist_ok=True)
 
     print(f"Output directory: {out_dir}")
-    print(f"Parameters: N_0={N_0}, JUMP={JUMP}, NUM_RUNS={args.num_runs}, GROWTH={args.growth}, GROWTH_BASE={args.growth_base}")
+    print(f"Parameters: N_0={N_0}, JUMP={JUMP}, NUM_RUNS={args.num_runs}, GROWTH_BASE={args.growth_base}")
     print(f"MC parameters: mc_reps={args.mc_reps}, penalty_factor={args.penalty_factor}")
     print(f"Video format: {args.video_format}" + (" (transparent)" if args.video_format == 'webm' else ""))
     print()

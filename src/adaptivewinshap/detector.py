@@ -770,9 +770,9 @@ class ChangeDetector:
         boomerang : bool, default False
             Enable boomerang animation effect.
         growth : str, default 'geometric'
-            Window growth strategy: 'arithmetic' or 'geometric'.
+            Window growth strategy (geometric recommended).
         growth_base : float, default sqrt(2)
-            Base for geometric growth (only used if growth='geometric').
+            Base for geometric growth.
 
         Returns
         -------
@@ -818,16 +818,9 @@ class ChangeDetector:
             t0 = time.time()
             io = self.data.shape[0] - l
 
-            # Determine window sizes based on growth strategy
-            if growth == "geometric":
-                # Geometric growth (Spokoiny 1998, Example 2.1)
-                # K = log_a(io/n_0) where a = growth_base
-                K = int(np.emath.logn(growth_base, io / n_0)) + 1
-            elif growth == "arithmetic":
-                # Arithmetic growth (original implementation)
-                K = int(io / n_0)
-            else:
-                raise ValueError(f"growth must be 'arithmetic' or 'geometric', got: {growth}")
+            # Determine window sizes based on geometric growth strategy (Spokoiny 1998, Example 2.1)
+            # K = log_a(io/n_0) where a = growth_base
+            K = int(np.emath.logn(growth_base, io / n_0)) + 1
 
             I_0 = list(self.data[max(0, io - n_0):io])
             I_k_minus1 = I_0
@@ -835,13 +828,9 @@ class ChangeDetector:
 
             for k in range(1, K + 1):
                 start_k_time = time.time()
-                # Calculate window sizes based on growth strategy
-                if growth == "geometric":
-                    n_k = int(np.power(growth_base, k) * n_0)
-                    n_k_plus1 = int(np.power(growth_base, k + 1) * n_0)
-                else:  # arithmetic
-                    n_k = (k + 1) * n_0
-                    n_k_plus1 = (k + 2) * n_0
+                # Calculate window sizes using geometric growth
+                n_k = int(np.power(growth_base, k) * n_0)
+                n_k_plus1 = int(np.power(growth_base, k + 1) * n_0)
 
                 start_kp1_abs = max(0, io - n_k_plus1)
                 end_kp1_abs = io  # exclusive upper bound

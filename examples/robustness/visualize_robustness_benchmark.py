@@ -50,7 +50,7 @@ def load_robustness_benchmark_data(results_dir, dataset_name, growth_strategy=No
     dataset_name : str
         Name of dataset
     growth_strategy : str, optional
-        Window growth strategy to filter: 'geometric', 'arithmetic', or None for all
+        Window growth strategy to filter (geometric only, kept for backwards compatibility)
 
     Returns
     -------
@@ -97,7 +97,7 @@ def load_robustness_benchmark_data(results_dir, dataset_name, growth_strategy=No
     else:
         # Look in both main directory and growth subdirectories
         search_dirs = [dataset_dir]
-        for growth_dir in ['geometric', 'arithmetic']:
+        for growth_dir in ['geometric']:
             potential_dir = dataset_dir / growth_dir
             if potential_dir.exists():
                 search_dirs.append(potential_dir)
@@ -179,10 +179,14 @@ def plot_window_statistics_comparison(data, save_dir):
 
         # Create configuration labels
         if 'N0' in summary.columns:
-            config_labels = summary.apply(
-                lambda row: f"N{int(row['N0'])}_α{row.get('alpha', 0):.2f}_B{int(row.get('num_bootstrap', 0))}",
-                axis=1
-            )
+            def make_label(row):
+                n0 = int(row['N0'])
+                alpha = row.get('alpha', 0)
+                # Support both mc_reps (new) and num_bootstrap (legacy)
+                mc = int(row.get('mc_reps', row.get('num_bootstrap', 0)))
+                lam = row.get('penalty_factor', 0.25)
+                return f"N{n0}_α{alpha:.2f}_M{mc}_λ{lam:.2f}"
+            config_labels = summary.apply(make_label, axis=1)
         else:
             config_labels = [f"Config {i}" for i in range(len(summary))]
 
@@ -446,18 +450,28 @@ def plot_true_vs_detected_by_n0(data, dataset_name, save_dir, breakpoints=None, 
             else:
                 continue
 
-            # Find num_bootstrap value
+            # Find mc_reps or num_bootstrap value
+            mc_reps_part = [p for p in parts if 'mcreps' in p.lower() or 'mc_reps' in p.lower()]
             bootstrap_part = [p for p in parts if 'bootstrap' in p.lower()]
-            if bootstrap_part:
+            if mc_reps_part:
+                bootstrap_val = int(mc_reps_part[0].replace('mcreps', '').replace('mc_reps', ''))
+            elif bootstrap_part:
                 bootstrap_val = int(bootstrap_part[0].replace('numbootstrap', '').replace('bootstrap', ''))
             else:
                 bootstrap_val = 0
+
+            # Find penalty_factor (lambda) value
+            lambda_part = [p for p in parts if 'penaltyfactor' in p.lower() or 'penalty_factor' in p.lower()]
+            if lambda_part:
+                lambda_val = float(lambda_part[0].replace('penaltyfactor', '').replace('penalty_factor', ''))
+            else:
+                lambda_val = 0.25  # default
 
             if n0_val not in n0_configs:
                 n0_configs[n0_val] = {}
             if alpha_val not in n0_configs[n0_val]:
                 n0_configs[n0_val][alpha_val] = []
-            n0_configs[n0_val][alpha_val].append((config_name, bootstrap_val))
+            n0_configs[n0_val][alpha_val].append((config_name, bootstrap_val, lambda_val))
         except:
             continue
 
@@ -494,10 +508,10 @@ def plot_true_vs_detected_by_n0(data, dataset_name, save_dir, breakpoints=None, 
 
         for row_idx, alpha_val in enumerate(alpha_values):
             configs_for_alpha = alpha_dict[alpha_val]
-            # Sort by bootstrap value
-            configs_for_alpha.sort(key=lambda x: x[1])
+            # Sort by bootstrap value, then by lambda
+            configs_for_alpha.sort(key=lambda x: (x[1], x[2]))
 
-            for col_idx, (config_name, bootstrap_val) in enumerate(configs_for_alpha):
+            for col_idx, (config_name, bootstrap_val, lambda_val) in enumerate(configs_for_alpha):
                 if col_idx >= n_cols:
                     break
 
@@ -516,7 +530,7 @@ def plot_true_vs_detected_by_n0(data, dataset_name, save_dir, breakpoints=None, 
                     else:
                         ax.text(0.5, 0.5, 'No window data', ha='center', va='center',
                                transform=ax.transAxes)
-                        ax.set_title(rf'$B = {bootstrap_val}$')
+                        ax.set_title(rf'$M = {bootstrap_val}$, $\lambda = {lambda_val:.2f}$')
                         continue
 
                 # Compute true windows
@@ -547,8 +561,8 @@ def plot_true_vs_detected_by_n0(data, dataset_name, save_dir, breakpoints=None, 
                 if col_idx == 0:
                     ax.set_ylabel(rf'$\alpha = {alpha_val}$', fontsize=12)
 
-                # Set subplot title (only B value)
-                ax.set_title(rf'$B = {bootstrap_val}$')
+                # Set subplot title (mc_reps and lambda)
+                ax.set_title(rf'$M = {bootstrap_val}$, $\lambda = {lambda_val:.2f}$')
 
             # Hide unused subplots in this row
             for col_idx in range(len(configs_for_alpha), n_cols):
@@ -593,9 +607,8 @@ def main():
     parser.add_argument(
         '--growth',
         type=str,
-        choices=['geometric', 'arithmetic'],
         default=None,
-        help='Window growth strategy to visualize: "geometric" or "arithmetic". If not specified, visualizes all available strategies.'
+        help='Deprecated: growth strategy filter (geometric only supported now)'
     )
     parser.add_argument(
         '--rolling-mean-size',

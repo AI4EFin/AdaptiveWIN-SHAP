@@ -268,9 +268,9 @@ def detect(
         Enable animation visualization.
     pause, save_path, fps, boomerang : animation parameters
     growth : str
-        'geometric' or 'arithmetic' window growth.
+        Window growth strategy (geometric only, following Spokoiny 1998).
     growth_base : float
-        Base for geometric growth (only used if growth='geometric').
+        Base for geometric growth.
 
     Returns
     -------
