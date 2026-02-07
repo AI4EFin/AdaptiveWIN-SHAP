@@ -1,9 +1,0 @@
-,N0,alpha,num_bootstrap
-window_mean,0.7022680156255642,,0.44531085009404653
-window_std,0.07911899416658795,,0.5303605451913032
-faithfulness_prtb_p90,,,
-faithfulness_prtb_p50,,,
-ablation_mif_p90,,,
-ablation_lif_p90,,,
-breakpoint_detection_lag_mean,1.5757311217808816,,0.16153183956544936
-detection_time,0.9094552678125111,,0.4083423593840766
