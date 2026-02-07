@@ -818,19 +818,35 @@ class ChangeDetector:
             t0 = time.time()
             io = self.data.shape[0] - l
 
+            # Skip time points where io <= n_0 (not enough data for initial window).
+            # Matches LPA_LSTM reference: these points get NaN windows.
+            if io <= n_0:
+                windows.append(np.nan)
+                mse_vals.append(np.nan)
+                rmse_vals.append(np.nan)
+                likelihoods.append(np.nan)
+                scaled_windows.append(np.nan)
+                continue
+
             # Determine window sizes based on geometric growth strategy (Spokoiny 1998, Example 2.1)
             # K = log_a(io/n_0) where a = growth_base
             K = int(np.emath.logn(growth_base, io / n_0)) + 1
 
             I_0 = list(self.data[max(0, io - n_0):io])
+            I_k = I_0
             I_k_minus1 = I_0
             n_k_minus1 = n_0
+            any_scale_tested = False
 
             for k in range(1, K + 1):
                 start_k_time = time.time()
                 # Calculate window sizes using geometric growth
                 n_k = int(np.power(growth_base, k) * n_0)
                 n_k_plus1 = int(np.power(growth_base, k + 1) * n_0)
+
+                # Stop if I_{k+1} would extend beyond available data
+                if n_k_plus1 > io:
+                    break
 
                 start_kp1_abs = max(0, io - n_k_plus1)
                 end_kp1_abs = io  # exclusive upper bound
@@ -862,6 +878,7 @@ class ChangeDetector:
 
                 # --- Observed T(i) across splits ---
                 T_vals = self.compute_T_vals(X_all, y_all, likelihood_i, J_abs, t_abs, t_workers, min_seg=min_window)
+                any_scale_tested = True
 
                 # Best split τ
                 best_tau = None
@@ -910,9 +927,14 @@ class ChangeDetector:
                     n_k_minus1 = n_k
                     continue
 
-            # Record diagnostics
-            if K == 0:
-                I_k = I_0
+            # If no scale was actually tested, skip this point (NaN)
+            if not any_scale_tested:
+                windows.append(np.nan)
+                mse_vals.append(np.nan)
+                rmse_vals.append(np.nan)
+                likelihoods.append(np.nan)
+                scaled_windows.append(np.nan)
+                continue
 
             # For the per-step diagnostic, compute OOS MSE on I_k
             MSE_I_k = 0  # segment_oos_mse(I_k, seq_len=seq_len, epochs=epochs, error_type=error_type)
