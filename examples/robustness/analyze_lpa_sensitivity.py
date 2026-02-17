@@ -36,6 +36,9 @@ class SensitivityAnalyzer:
 
         For each metric, compute variance explained by each parameter.
         """
+        # Filter to only successful runs
+        df = self.results_df[self.results_df['success'] == True].copy()
+
         # Metrics to analyze
         metric_cols = [
             'window_mean', 'window_std',
@@ -46,11 +49,12 @@ class SensitivityAnalyzer:
             'detection_time'
         ]
 
-        # Parameters to analyze
-        param_cols = ['N0', 'alpha', 'num_bootstrap']
-
-        # Filter to only successful runs
-        df = self.results_df[self.results_df['success'] == True].copy()
+        # Parameters to analyze (support both new mc_reps and legacy num_bootstrap)
+        if 'mc_reps' in df.columns:
+            param_cols = ['N0', 'alpha', 'mc_reps', 'penalty_factor']
+        else:
+            param_cols = ['N0', 'alpha', 'num_bootstrap']
+        param_cols = [p for p in param_cols if p in df.columns]
 
         sensitivity_indices = {}
 
@@ -95,11 +99,17 @@ class SensitivityAnalyzer:
         """Generate summary statistics per parameter."""
         df = self.results_df[self.results_df['success'] == True].copy()
 
-        param_cols = ['N0', 'jump', 'alpha', 'num_bootstrap']
+        if 'mc_reps' in df.columns:
+            param_cols = ['N0', 'alpha', 'mc_reps', 'penalty_factor']
+        else:
+            param_cols = ['N0', 'alpha', 'num_bootstrap']
+        param_cols = [p for p in param_cols if p in df.columns]
+
         metric_cols = [
             'window_mean', 'faithfulness_prtb_p90',
             'correlation_true_imp_mean', 'detection_time'
         ]
+        metric_cols = [m for m in metric_cols if m in df.columns]
 
         summaries = {}
 
@@ -118,11 +128,17 @@ class SensitivityAnalyzer:
         """Generate heatmaps for each parameter."""
         df = self.results_df[self.results_df['success'] == True].copy()
 
-        param_cols = ['N0', 'jump', 'alpha', 'num_bootstrap']
+        if 'mc_reps' in df.columns:
+            param_cols = ['N0', 'alpha', 'mc_reps', 'penalty_factor']
+        else:
+            param_cols = ['N0', 'alpha', 'num_bootstrap']
+        param_cols = [p for p in param_cols if p in df.columns]
+
         metric_cols = [
             'window_mean', 'faithfulness_prtb_p90',
             'correlation_true_imp_mean', 'detection_time'
         ]
+        metric_cols = [m for m in metric_cols if m in df.columns]
 
         for param in param_cols:
             # Create aggregated dataframe
@@ -156,8 +172,14 @@ class SensitivityAnalyzer:
         """Generate line plots for each parameter."""
         df = self.results_df[self.results_df['success'] == True].copy()
 
-        param_cols = ['N0', 'jump', 'alpha', 'num_bootstrap']
+        if 'mc_reps' in df.columns:
+            param_cols = ['N0', 'alpha', 'mc_reps', 'penalty_factor']
+        else:
+            param_cols = ['N0', 'alpha', 'num_bootstrap']
+        param_cols = [p for p in param_cols if p in df.columns]
+
         metrics = ['faithfulness_prtb_p90', 'correlation_true_imp_mean', 'window_mean']
+        metrics = [m for m in metrics if m in df.columns]
 
         for metric in metrics:
             if metric not in df.columns:
@@ -216,14 +238,6 @@ class SensitivityAnalyzer:
                 'reasoning': 'Balances faithfulness and computational cost'
             }
 
-        # Jump: Larger jump for speed, smaller for accuracy
-        if 'breakpoint_detection_lag_mean' in df.columns:
-            best_jump = df.groupby('jump')['breakpoint_detection_lag_mean'].mean().idxmin()
-            recommendations['jump'] = {
-                'recommended': int(best_jump),
-                'reasoning': 'Minimizes breakpoint detection lag'
-            }
-
         # Alpha: Standard 0.95 is usually good, but check stability
         if 'window_std' in df.columns:
             best_alpha = df.groupby('alpha')['window_std'].mean().idxmin()
@@ -232,16 +246,25 @@ class SensitivityAnalyzer:
                 'reasoning': 'Minimizes window size variance'
             }
 
-        # Num_bootstrap: More is better but diminishing returns
-        if 'faithfulness_prtb_p90' in df.columns:
-            bootstrap_perf = df.groupby('num_bootstrap')['faithfulness_prtb_p90'].mean()
+        # mc_reps / num_bootstrap: More is better but diminishing returns
+        mc_col = 'mc_reps' if 'mc_reps' in df.columns else 'num_bootstrap'
+        if mc_col in df.columns and 'faithfulness_prtb_p90' in df.columns:
+            mc_perf = df.groupby(mc_col)['faithfulness_prtb_p90'].mean()
             # Find elbow point (where improvement < 1%)
-            improvements = bootstrap_perf.pct_change()
-            min_sufficient = bootstrap_perf.index[improvements < 0.01][0] if any(improvements < 0.01) else bootstrap_perf.index[-1]
+            improvements = mc_perf.pct_change()
+            min_sufficient = mc_perf.index[improvements < 0.01][0] if any(improvements < 0.01) else mc_perf.index[-1]
 
-            recommendations['num_bootstrap'] = {
+            recommendations[mc_col] = {
                 'recommended': int(min_sufficient),
-                'reasoning': f'Sufficient bootstrap iterations for stable results'
+                'reasoning': 'Sufficient MC replications for stable critical values'
+            }
+
+        # Penalty factor: Find value that minimizes window size variance
+        if 'penalty_factor' in df.columns and 'window_std' in df.columns:
+            best_penalty = df.groupby('penalty_factor')['window_std'].mean().idxmin()
+            recommendations['penalty_factor'] = {
+                'recommended': float(best_penalty),
+                'reasoning': 'Minimizes window size variance'
             }
 
         # Save recommendations

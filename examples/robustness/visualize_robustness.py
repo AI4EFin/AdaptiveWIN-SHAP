@@ -731,7 +731,7 @@ class RobustnessVisualizer:
         results_df : pd.DataFrame
             Results with parameter column and window statistics
         param_col : str
-            Parameter column name ('N0', 'alpha', 'num_bootstrap')
+            Parameter column name ('N0', 'alpha', 'mc_reps', 'penalty_factor')
         dataset_name : str, optional
             Name of dataset
         title : str, optional

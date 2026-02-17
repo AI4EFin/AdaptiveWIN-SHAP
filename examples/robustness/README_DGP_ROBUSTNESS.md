@@ -13,7 +13,7 @@ The DGP parameter robustness test evaluates how Adaptive WIN-SHAP performs when 
 
 ### Run the full pipeline:
 ```bash
-python examples/robustness/dgp_parameter_robustness.py --verbose
+python examples/robustness/02_dgp_parameter_robustness.py --verbose
 ```
 
 This will:
@@ -90,26 +90,26 @@ Main results table with one row per scenario containing:
 ### Skip steps (for faster iteration):
 ```bash
 # Only regenerate visualizations from existing results
-python examples/robustness/dgp_parameter_robustness.py --visualize-only
+python examples/robustness/02_dgp_parameter_robustness.py --visualize-only
 
 # Skip data generation (use existing datasets)
-python examples/robustness/dgp_parameter_robustness.py --skip-generation
+python examples/robustness/02_dgp_parameter_robustness.py --skip-generation
 
 # Skip LPA detection (use existing windows)
-python examples/robustness/dgp_parameter_robustness.py --skip-detection
+python examples/robustness/02_dgp_parameter_robustness.py --skip-detection
 
 # Skip SHAP benchmark (use existing benchmark results)
-python examples/robustness/dgp_parameter_robustness.py --skip-benchmark
+python examples/robustness/02_dgp_parameter_robustness.py --skip-benchmark
 ```
 
 ### Custom random seeds:
 ```bash
-python examples/robustness/dgp_parameter_robustness.py --seeds 100,200,300
+python examples/robustness/02_dgp_parameter_robustness.py --seeds 100,200,300
 ```
 
 ### Different base dataset:
 ```bash
-python examples/robustness/dgp_parameter_robustness.py --dataset arx_rotating
+python examples/robustness/02_dgp_parameter_robustness.py --dataset arx_rotating
 ```
 
 ## Interpreting Results

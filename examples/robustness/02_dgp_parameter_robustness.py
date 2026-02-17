@@ -6,22 +6,28 @@ Generates multiple scenarios with different AR(3) coefficients and evaluates
 performance across changepoint detection, SHAP accuracy, and explanation quality.
 
 Usage:
-    python examples/robustness/dgp_parameter_robustness.py [options]
+    python examples/robustness/02_dgp_parameter_robustness.py [options]
 """
 
 import os
 import sys
 import json
+import time
 import argparse
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+import torch
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 
-# Add parent to path for imports
+# Add parent directory and project root to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+
+from adaptivewinshap import AdaptiveLSTM, ChangeDetector
+from benchmark import run_benchmark
 
 # Set random seed for reproducibility
 np.random.seed(42)
@@ -462,12 +468,21 @@ def save_scenario_data(scenario_name: str,
 # LPA DETECTION
 # ============================================================================
 
+def _get_device() -> str:
+    """Get best available device."""
+    if torch.cuda.is_available():
+        return "cuda"
+    elif torch.mps.is_available():
+        return "mps"
+    return "cpu"
+
+
 def run_lpa_detection(data_path: Path,
                      output_dir: Path,
-                     N0: int = 75,
+                     N0: int = 100,
                      alpha: float = 0.95,
-                     num_bootstrap: int = 50,
-                     jump: int = 1,
+                     mc_reps: int = 300,
+                     penalty_factor: float = 0.25,
                      growth: str = 'geometric',
                      growth_base: float = 1.41421356237,
                      verbose: bool = False) -> Path:
@@ -479,15 +494,15 @@ def run_lpa_detection(data_path: Path,
     data_path : Path
         Path to data.csv
     output_dir : Path
-        Directory to save windows.csv
+        Directory to save windows.csv and critical_values.csv
     N0 : int
         Initial window size
     alpha : float
         Confidence level
-    num_bootstrap : int
-        Number of bootstrap iterations
-    jump : int
-        Step size
+    mc_reps : int
+        Number of Monte Carlo replications for critical value computation
+    penalty_factor : float
+        Spokoiny penalty factor for CV adjustment
     growth : str
         Window growth strategy
     growth_base : float
@@ -500,67 +515,9 @@ def run_lpa_detection(data_path: Path,
     Path
         Path to saved windows.csv
     """
-    import torch
-    import torch.nn as nn
-    from adaptivewinshap import AdaptiveModel, ChangeDetector, store_init_kwargs
-
-    # Define LSTM model class (same as in lstm_simulation.py)
-    class AdaptiveLSTM(AdaptiveModel):
-        @store_init_kwargs
-        def __init__(self, device, seq_length=3, input_size=1, hidden=16, layers=1,
-                     dropout=0.2, batch_size=512, lr=1e-12, epochs=50,
-                     type_precision=np.float32):
-            super().__init__(device=device, batch_size=batch_size, lr=lr, epochs=epochs,
-                           type_precision=type_precision)
-            self.lstm = nn.LSTM(input_size, hidden, num_layers=layers, batch_first=True,
-                              dropout=dropout if layers > 1 else 0.0)
-            self.fc = nn.Linear(hidden, 1)
-            self.seq_length = seq_length
-            self.input_size = input_size
-            self.hidden = hidden
-            self.layers = layers
-            self.dropout = dropout
-
-        def forward(self, x):
-            out, _ = self.lstm(x)
-            yhat = self.fc(out[:, -1, :])
-            return yhat.squeeze(-1)
-
-        def prepare_data(self, window, start_abs_idx):
-            L = self.seq_length
-            F = window.shape[1] if window.ndim == 2 else 1
-            n = len(window)
-
-            if n <= L:
-                return None, None, None
-
-            if window.ndim == 1:
-                window = window[:, None]
-
-            X_list = []
-            y_list = []
-            for i in range(L, n):
-                X_list.append(window[i-L:i])
-                y_list.append(window[i, 0])
-
-            X = np.array(X_list, dtype=np.float32)
-            y = np.array(y_list, dtype=np.float32)
-
-            t_abs = np.arange(start_abs_idx + L, start_abs_idx + n, dtype=np.int64)
-
-            X_tensor = torch.from_numpy(X)
-            y_tensor = torch.from_numpy(y)
-            return X_tensor, y_tensor, t_abs
-
-        @torch.no_grad()
-        def predict(self, x: np.ndarray) -> np.ndarray:
-            xt = torch.tensor(x, dtype=torch.float32, device=self.device)
-            preds = self(xt)
-            return preds.detach().cpu().numpy().reshape(-1, 1)
-
     if verbose:
         print(f"    Running LPA detection: N0={N0}, alpha={alpha}, "
-              f"bootstrap={num_bootstrap}, jump={jump}")
+              f"mc_reps={mc_reps}, penalty={penalty_factor}")
 
     # Load data
     df = pd.read_csv(data_path)
@@ -576,12 +533,7 @@ def run_lpa_detection(data_path: Path,
         data = target
         input_size = 1
 
-    # Determine device
-    device = "cpu"
-    if torch.cuda.is_available():
-        device = "cuda"
-    elif torch.mps.is_available():
-        device = "mps"
+    device = _get_device()
 
     # Initialize model (AR(3) by default for piecewise_ar3)
     model = AdaptiveLSTM(
@@ -594,31 +546,67 @@ def run_lpa_detection(data_path: Path,
     # Create change detector
     cd = ChangeDetector(model, data, debug=False, force_cpu=True)
 
+    # Compute or load critical values
+    cv_path = output_dir / 'critical_values.csv'
+    if cv_path.exists():
+        if verbose:
+            print(f"    Loading critical values from: {cv_path}")
+        cd.load_critical_values(str(cv_path))
+    else:
+        if verbose:
+            print(f"    Computing Monte Carlo critical values (mc_reps={mc_reps})...")
+        cd.precompute_critical_values(
+            data=data,
+            n_0=N0,
+            mc_reps=mc_reps,
+            alpha=alpha,
+            search_step=2,
+            min_seg=4,
+            penalty_factor=penalty_factor,
+            growth_base=growth_base,
+            verbose=verbose
+        )
+        cd.save_critical_values(str(cv_path))
+
     # Run detection
-    min_seg = 4
+    start_time = time.time()
     results = cd.detect(
-        min_window=min_seg,
+        min_window=4,
         n_0=N0,
-        jump=jump,
-        search_step=1,
+        jump=1,
+        search_step=2,
         alpha=alpha,
-        num_bootstrap=num_bootstrap,
         t_workers=10,
-        b_workers=10,
-        one_b_threads=1,
+        debug_anim=False,
+        save_path=None,
         growth=growth,
         growth_base=growth_base
     )
+    detection_time = time.time() - start_time
 
-    # Save results
-    windows_df = pd.DataFrame(results)
-    windows_df = windows_df[['windows']].rename(columns={'windows': 'window_mean'})
+    # Save full run results
+    results.to_csv(output_dir / 'run_0.csv', index=False)
+
+    # Extract windows and build aggregated windows file
+    windows_df = results[['windows']].copy()
+    windows_df = windows_df.rename(columns={'windows': 'window_mean'})
+
+    # Pad to match original data length (windows may be shorter due to seq_length)
+    expected_length = len(target)
+    if len(windows_df) < expected_length:
+        n_pad = expected_length - len(windows_df)
+        first_window = windows_df.iloc[0]
+        pad_df = pd.DataFrame([first_window] * n_pad, columns=windows_df.columns)
+        windows_df = pd.concat([pad_df, windows_df], ignore_index=True)
 
     windows_path = output_dir / 'windows.csv'
     windows_df.to_csv(windows_path, index=False)
 
     if verbose:
-        print(f"    Saved windows: {windows_path}")
+        valid = windows_df['window_mean'].dropna()
+        print(f"    Detection time: {detection_time:.1f}s")
+        print(f"    Windows: mean={valid.mean():.1f}, std={valid.std():.1f}")
+        print(f"    Saved: {windows_path}")
 
     return windows_path
 
@@ -650,18 +638,19 @@ def run_shap_benchmark(data_path: Path,
     Path
         Path to benchmark directory
     """
-    from benchmark import run_benchmark
-
     benchmark_dir = output_dir / 'benchmark'
     benchmark_dir.mkdir(parents=True, exist_ok=True)
 
     if verbose:
         print(f"    Running SHAP benchmark")
 
+    device = _get_device()
+
     # Run benchmark
     summary_df = run_benchmark(
         dataset_path=str(data_path),
         output_dir=str(benchmark_dir),
+        device=device,
         dataset_type='simulated',
         column_name='N',
         precomputed_windows_path=str(windows_path),
@@ -1165,7 +1154,7 @@ def main():
     parser.add_argument('--dataset', type=str, default='piecewise_ar3',
                        help='Base dataset name (default: piecewise_ar3)')
     parser.add_argument('--output-dir', type=str,
-                       default='examples/results/dgp_robustness',
+                       default='examples/results/robustness/dgp_robustness',
                        help='Output directory')
     parser.add_argument('--seeds', type=str, default='42,43,44',
                        help='Random seeds for 3 random scenarios (comma-separated)')
@@ -1298,11 +1287,12 @@ def main():
         print("="*80)
 
         lpa_config = {
-            'N0': 75,
+            'N0': 100,
             'alpha': 0.95,
-            'num_bootstrap': 50,
-            'jump': 1,
-            'growth': 'geometric'
+            'mc_reps': 300,
+            'penalty_factor': 0.1,
+            'growth': 'geometric',
+            'growth_base': 1.41421356237,
         }
 
         print(f"LPA Configuration: {lpa_config}")

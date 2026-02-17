@@ -1,0 +1,4 @@
+,window_mean,window_mean,window_mean,faithfulness_prtb_p90,faithfulness_prtb_p90,faithfulness_prtb_p90,correlation_true_imp_mean,correlation_true_imp_mean,correlation_true_imp_mean,detection_time,detection_time,detection_time
+,mean,std,count,mean,std,count,mean,std,count,mean,std,count
+alpha,,,,,,,,,,,,
+0.95,375.95716690184196,34.75056761511098,126,2.0795799642164012,0.08168047977118138,126,0.5342677354538281,0.031633128186478454,126,1120.8706916759884,806.4347337799525,126

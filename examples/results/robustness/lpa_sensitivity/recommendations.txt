@@ -1,0 +1,20 @@
+LPA Hyperparameter Recommendations
+============================================================
+
+N0:
+  Recommended: 200
+  Safe range: [140, 260]
+  Reasoning: Balances faithfulness and computational cost
+
+alpha:
+  Recommended: 0.95
+  Reasoning: Minimizes window size variance
+
+mc_reps:
+  Recommended: 200
+  Reasoning: Sufficient MC replications for stable critical values
+
+penalty_factor:
+  Recommended: 0.0
+  Reasoning: Minimizes window size variance
+
