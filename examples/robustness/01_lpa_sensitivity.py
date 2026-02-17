@@ -555,19 +555,20 @@ def main():
     if args.quick_test:
         # Quick test: fewer parameters
         param_grid = {
-            'N0': [50, 100],
+            'N0': [75, 100],
             'alpha': [0.95],
-            'mc_reps': [10, 50],
+            'mc_reps': [100, 200],
             'penalty_factor': [0.05],
             'growth_base': [1.41421356237]  # sqrt(2)
         }
     else:
         # Full grid
         param_grid = {
-            'N0': [25, 50, 75, 100],
-            'alpha': [0.90, 0.95, 0.99],
-            'mc_reps': [10, 30, 50],
-            'penalty_factor': [0.0, 0.05, 0.15, 0.25],
+            'N0': [75, 100, 125, 150, 175, 200],
+            # 'alpha': [0.90, 0.95, 0.99],
+            'alpha': [0.95],
+            'mc_reps': [100, 200, 300],
+            'penalty_factor': [0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3],
             'growth_base': [1.41421356237]  # sqrt(2)
         }
 
