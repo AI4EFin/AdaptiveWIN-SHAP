@@ -333,7 +333,8 @@ class AdaptiveLSTM(AdaptiveModel):
         n_total: int,
         rng: np.random.Generator,
         method: str = "wild_bootstrap",
-        residuals: Optional[np.ndarray] = None
+        residuals: Optional[np.ndarray] = None,
+        covariates: Optional[np.ndarray] = None
     ) -> np.ndarray:
         """
         Simulate a homogeneous time series via recursive 1-step LSTM forecasts.
@@ -362,11 +363,15 @@ class AdaptiveLSTM(AdaptiveModel):
         residuals : np.ndarray, optional
             Array of residuals to resample from (required for 'wild_bootstrap'
             and 'residual_bootstrap' methods).
+        covariates : np.ndarray, optional
+            Exogenous covariate values for the simulation period,
+            shape [n_total, n_cov]. Required when model has input_size > 1.
+            These are treated as fixed/observed (not simulated).
 
         Returns
         -------
         np.ndarray
-            Simulated series of length n_total (dtype=float32).
+            Simulated target series of length n_total (dtype=float32).
 
         References
         ----------
@@ -414,8 +419,14 @@ class AdaptiveLSTM(AdaptiveModel):
         self.eval()
         with torch.no_grad():
             for i, t in enumerate(range(L, n_total)):
-                # Prepare input: [1, L, 1] for univariate
-                x = y_sim[t - L:t].reshape(1, L, 1)
+                if covariates is not None:
+                    # Multivariate: combine target history with covariate history
+                    target_hist = y_sim[t - L:t].reshape(L, 1)
+                    cov_hist = covariates[t - L:t]  # [L, n_cov]
+                    x = np.concatenate([target_hist, cov_hist], axis=1)
+                    x = x.reshape(1, L, -1)
+                else:
+                    x = y_sim[t - L:t].reshape(1, L, 1)
                 xb = torch.from_numpy(x).to(self.device)
                 pred = float(self(xb).item())
                 y_sim[t] = np.float32(pred + innovations[i])

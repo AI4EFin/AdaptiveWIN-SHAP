@@ -240,7 +240,8 @@ class ChangeDetector:
         min_seg: int,
         simulation_method: str,
         residuals: Optional[np.ndarray],
-        rep_seed: int
+        rep_seed: int,
+        covariates: Optional[np.ndarray] = None
     ) -> float:
         """
         Compute SupLR for a single MC replication.
@@ -249,19 +250,26 @@ class ChangeDetector:
         """
         rng = np.random.default_rng(rep_seed)
 
-        # Simulate homogeneous series
+        # Simulate homogeneous target series
         y_sim = i0_model.simulate_series(
             seed_values=seed_values,
             sigma=sigma,
             n_total=n_total,
             rng=rng,
             method=simulation_method,
-            residuals=residuals
+            residuals=residuals,
+            covariates=covariates
         )
+
+        # For multivariate models, combine simulated target with observed covariates
+        if covariates is not None:
+            sim_data = np.column_stack([y_sim[:, None], covariates[:len(y_sim)]])
+        else:
+            sim_data = y_sim
 
         # Compute SupLR over J_k
         suplr = self._compute_suplr_for_series(
-            y_sim, j_start, j_end, search_step, min_seg
+            sim_data, j_start, j_end, search_step, min_seg
         )
         return max(0.0, suplr)
 
@@ -280,7 +288,8 @@ class ChangeDetector:
         simulation_method: str,
         seed: int,
         n_jobs: int = -1,
-        show_progress: bool = False
+        show_progress: bool = False,
+        covariates: Optional[np.ndarray] = None
     ) -> Dict:
         """
         Compute critical value for a single scale k via Monte Carlo.
@@ -336,6 +345,17 @@ class ChangeDetector:
         # Prepare residuals for bootstrap methods (wild_bootstrap and residual_bootstrap)
         resid = residuals if simulation_method in ("wild_bootstrap", "residual_bootstrap") else None
 
+        # Prepare covariate slice for this scale's series length
+        # Use last n_k_plus1 observed covariate values (exogenous, fixed under null)
+        scale_covariates = None
+        if covariates is not None:
+            if len(covariates) >= n_k_plus1:
+                scale_covariates = covariates[-n_k_plus1:]
+            else:
+                # Data shorter than needed: tile covariates
+                n_tiles = (n_k_plus1 // len(covariates)) + 1
+                scale_covariates = np.tile(covariates, (n_tiles, 1))[:n_k_plus1]
+
         if show_progress and HAS_TQDM:
             # Parallel with progress bar - use tqdm to track completions
             pbar = tqdm(
@@ -353,7 +373,8 @@ class ChangeDetector:
                     delayed(self._compute_single_mc_rep)(
                         i0_model, seed_values, sigma, n_k_plus1,
                         j_start, j_end, search_step, min_seg,
-                        simulation_method, resid, rep_seed
+                        simulation_method, resid, rep_seed,
+                        scale_covariates
                     )
                     for rep_seed in rep_seeds
                 )
@@ -368,7 +389,8 @@ class ChangeDetector:
                 delayed(self._compute_single_mc_rep)(
                     i0_model, seed_values, sigma, n_k_plus1,
                     j_start, j_end, search_step, min_seg,
-                    simulation_method, resid, rep_seed
+                    simulation_method, resid, rep_seed,
+                    scale_covariates
                 )
                 for rep_seed in rep_seeds
             )
@@ -481,12 +503,21 @@ class ChangeDetector:
             print(f"  Seed: {seed}")
             print()
 
-        # Step 1: Fit I_0 model
+        # Step 1: Fit I_0 model (pass full data for multivariate support)
         if verbose:
             print("Step 1: Fitting model on I_0...")
-        i0_model, sigma, seed_values, residuals = self._fit_i0_model(target, n_0)
+        i0_model, sigma, seed_values, residuals = self._fit_i0_model(data, n_0)
+
+        # Extract covariates for MC simulation (exogenous, treated as fixed)
+        if data.ndim == 2 and data.shape[1] > 1:
+            covariates = data[:, 1:].astype(np.float32)
+        else:
+            covariates = None
+
         if verbose:
             print(f"  Residual sigma: {sigma:.4f}")
+            if covariates is not None:
+                print(f"  Covariates: {covariates.shape[1]} columns (used in MC simulation)")
             print()
 
         # Step 2: Determine scales
@@ -529,7 +560,8 @@ class ChangeDetector:
                 search_step=search_step, min_seg=min_seg,
                 simulation_method=simulation_method, seed=seed,
                 n_jobs=max_workers,
-                show_progress=verbose
+                show_progress=verbose,
+                covariates=covariates
             )
             results.append(result)
 

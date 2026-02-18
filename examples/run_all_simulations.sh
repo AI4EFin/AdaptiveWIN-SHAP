@@ -12,18 +12,19 @@ datasets=(
 #    "arx_rotating"
 #    "trend_season"
 #    "spike_process"
-#    "garch_regime"
+#    "switching_factor"
 )
 
-# Configuration
+# Configuration (matching lstm_simulation.py defaults and 01_lpa_sensitivity.py)
 N0=100
-NUM_BOOTSTRAP=30
 JUMP=1
 STEP=2
+ALPHA=0.95
 NUM_RUNS=1
 GROWTH="geometric"
-GROWTH_BASE=1.41421356237     # Base for geometric growth
-
+GROWTH_BASE=1.41421356237     # sqrt(2)
+MC_REPS=300
+PENALTY_FACTOR=0.1
 
 # Track results
 declare -a results
@@ -40,10 +41,12 @@ for dataset in "${datasets[@]}"; do
         --n0 $N0 \
         --jump $JUMP \
         --step $STEP \
+        --alpha $ALPHA \
         --num-runs $NUM_RUNS \
         --growth $GROWTH \
         --growth-base $GROWTH_BASE \
-        --num-bootstrap $NUM_BOOTSTRAP
+        --mc-reps $MC_REPS \
+        --penalty-factor $PENALTY_FACTOR
 
     if [ $? -eq 0 ]; then
         results+=("$dataset : SUCCESS")

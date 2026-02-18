@@ -68,7 +68,7 @@ if __name__ == "__main__":
         "trend_season": {"seq_length": 3, "n_covariates": 0},   # AR(3) with structural break
         "spike_process": {"seq_length": 3, "n_covariates": 2},  # AR(3) + 2 covariates (D,R) + spikes
         "tvp_arx": {"seq_length": 3, "n_covariates": 2},        # AR(3) + 2 covariates (Z1,Z2), time-varying
-        "garch_regime": {"seq_length": 1, "n_covariates": 2},   # GARCH(1,1) + 2 factors (M,V)
+        "switching_factor": {"seq_length": 1, "n_covariates": 3},  # Factor model + 3 factors (Market, Supply, Credit)
         "cointegration": {"seq_length": 1, "n_covariates": 4},  # Cointegration: 2 important (X1,X2) + 2 noise (X3,X4)
     }
 

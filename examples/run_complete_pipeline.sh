@@ -1,4 +1,3 @@
-
 #!/bin/bash
 # Complete pipeline: Window Detection → Benchmarking → Visualization
 
@@ -25,19 +24,24 @@ fi
 
 # Array of all datasets
 datasets=(
-    "piecewise_ar3"
-    "arx_rotating"
+#    "piecewise_ar3"
+#    "arx_rotating"
     "trend_season"
     "spike_process"
-    "garch_regime"
+    "switching_factor"
 )
 
-# Configuration (matching run_all_simulations.sh)
-N0=75
+# Configuration (matching lstm_simulation.py defaults and 01_lpa_sensitivity.py)
+N0=100
 JUMP=1
-NUM_RUNS=9
+STEP=2
+ALPHA=0.95
+NUM_RUNS=1
 GROWTH="geometric"
-GROWTH_BASE=2.0     # Base for geometric growth
+GROWTH_BASE=1.41421356237     # sqrt(2)
+MC_REPS=300
+PENALTY_FACTOR=0.1
+ROLLING_MEAN_WINDOW=75
 
 # Track results
 declare -a window_results
@@ -60,9 +64,13 @@ for dataset in "${datasets[@]}"; do
         --dataset "$dataset" \
         --n0 $N0 \
         --jump $JUMP \
+        --step $STEP \
+        --alpha $ALPHA \
         --num-runs $NUM_RUNS \
         --growth $GROWTH \
-        --growth-base $GROWTH_BASE
+        --growth-base $GROWTH_BASE \
+        --mc-reps $MC_REPS \
+        --penalty-factor $PENALTY_FACTOR
 
     if [ $? -eq 0 ]; then
         window_results+=("$dataset : SUCCESS")
@@ -90,7 +98,9 @@ for dataset in "${datasets[@]}"; do
         --data-type simulated \
         --n0 $N0 \
         --jump $JUMP \
-        --growth $GROWTH
+        --rolling-mean-window $ROLLING_MEAN_WINDOW \
+        --growth $GROWTH \
+        --penalty-factor $PENALTY_FACTOR
 
     if [ $? -eq 0 ]; then
         benchmark_results+=("$dataset : SUCCESS")
@@ -115,7 +125,9 @@ for dataset in "${datasets[@]}"; do
 
     python examples/benchmark_viz.py \
         --dataset "$dataset" \
-        --data-type simulated
+        --data-type simulated \
+        --n0 $N0 \
+        --penalty-factor $PENALTY_FACTOR
 
     if [ $? -eq 0 ]; then
         viz_results+=("$dataset : SUCCESS")
@@ -159,9 +171,9 @@ echo "Pipeline complete!"
 echo "============================================================"
 echo ""
 echo "Results are organized in:"
-echo "  • Window sizes: examples/results/LSTM/{dataset}/${GROWTH}/Jump_${JUMP}_N0_${N0}/"
-echo "  • Benchmarks:   examples/results/benchmark_{dataset}/"
-echo "  • Figures:      examples/results/benchmark_{dataset}/figures/"
+echo "  - Window sizes: examples/results/LSTM/{dataset}/Jump_${JUMP}_N0_${N0}_lambda_${PENALTY_FACTOR}/"
+echo "  - Benchmarks:   examples/results/benchmark_{dataset}/N0_${N0}_lambda_${PENALTY_FACTOR}/"
+echo "  - Figures:      examples/results/benchmark_{dataset}/N0_${N0}_lambda_${PENALTY_FACTOR}/figures/"
 echo ""
 echo "Review benchmark_summary.csv in each results directory for metrics."
 echo "============================================================"

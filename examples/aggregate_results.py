@@ -29,7 +29,7 @@ DATASETS = [
     'arx_rotating',
     'trend_season',
     'spike_process',
-    'garch_regime'
+    'switching_factor'
 ]
 
 # Method configurations with display names

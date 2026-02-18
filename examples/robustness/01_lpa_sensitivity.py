@@ -40,7 +40,7 @@ class LPASensitivityExperiment:
         "arx_rotating": {"seq_length": 3, "n_covariates": 3},
         "trend_season": {"seq_length": 3, "n_covariates": 0},
         "spike_process": {"seq_length": 3, "n_covariates": 2},
-        "garch_regime": {"seq_length": 1, "n_covariates": 2},
+        "switching_factor": {"seq_length": 1, "n_covariates": 3},
     }
 
     def __init__(self, output_dir='examples/results/robustness/lpa_sensitivity'):
@@ -271,7 +271,7 @@ class LPASensitivityExperiment:
             'arx_rotating': [500, 1000],
             'trend_season': [500, 1000],
             'spike_process': [750],  # single breakpoint at t=750
-            'garch_regime': [750]
+            'switching_factor': [500, 1000]
         }
 
         if dataset_name not in true_breakpoints:

@@ -1,12 +1,12 @@
 """
 Generate all simulated datasets for benchmarking AdaptiveWIN-SHAP methods.
 
-Creates 6 different datasets with various non-stationary characteristics:
+Creates 5 different datasets with various non-stationary characteristics:
 1. piecewise_ar3 - Rotating dominant AR(3) lag (baseline)
 2. arx_rotating - ARX with rotating covariate drivers
 3. trend_season - Trend + seasonality + AR break
 4. spike_process - Jump/spike regime with changing covariate role
-5. garch_regime - GARCH returns with regime-shifting factor loadings
+5. switching_factor - Regime-switching factor model with rotating loadings
 """
 
 import numpy as np
@@ -250,52 +250,106 @@ def sim_spike_process(T=1500, p=3, seed=2,
 
 
 
-def sim_regime_garch_factors(T=1500, seed=4,
-                             regime_lengths=(750, 750)):
+def sim_switching_factor(T=1500, seed=4,
+                         regime_lengths=(500, 500, 500),
+                         noise_sigma=0.5):
+    """
+    Regime-switching factor model with constant variance.
+
+    Models an asset/energy return driven by 3 observable factors whose
+    loadings rotate across regimes (common in energy finance and asset pricing):
+
+      Y_t = phi * Y_{t-1} + beta_1[k] * F1_t + beta_2[k] * F2_t
+                           + beta_3[k] * F3_t + eps_t
+
+    where eps_t ~ N(0, sigma^2) with CONSTANT sigma (homoskedastic).
+
+    Factors:
+      F1 (Market/Demand): broad market exposure, slight autocorrelation
+      F2 (Term/Supply):   yield curve or supply-side factor, mean-reverting
+      F3 (Credit/Policy): risk premium or policy intervention factor
+
+    Regimes:
+      0 (Expansion, t=0-500):     Market dominates  beta=[1.1, 0.1, -0.1]
+      1 (Transition, t=500-1000): Supply dominates   beta=[0.2, 1.0, 0.15]
+      2 (Stress, t=1000-1500):    Credit dominates   beta=[-0.1, 0.15, 1.1]
+
+    Parameters
+    ----------
+    T : int
+        Number of time points
+    seed : int
+        Random seed for reproducibility
+    regime_lengths : tuple of int
+        Length of each regime
+    noise_sigma : float
+        Constant noise standard deviation
+
+    Returns
+    -------
+    Y : (T,) target series
+    Z : (T, 3) covariate matrix [F1, F2, F3]
+    true_imp : (T, 4) true importances [lag-1, F1, F2, F3]
+    """
     rng = np.random.default_rng(seed)
-    t = np.arange(T)
 
-    # Factors: market M and vol-risk V
-    M = rng.normal(0, 1.0, size=T)
-    V = rng.normal(0, 1.0, size=T)
-    Z = np.vstack([M, V]).T
+    # AR(1) persistence (stable across regimes, mild)
+    phi = 0.3
 
-    # regime-specific betas and GARCH params
+    # Generate factors with realistic autocorrelation structure
+    # F1: Market/Demand — slight positive autocorrelation
+    F1 = np.zeros(T)
+    F1[0] = rng.normal(0, 1.0)
+    for t in range(1, T):
+        F1[t] = 0.2 * F1[t-1] + rng.normal(0, 1.0)
+
+    # F2: Term/Supply — mean-reverting with moderate persistence
+    F2 = np.zeros(T)
+    F2[0] = rng.normal(0, 1.0)
+    for t in range(1, T):
+        F2[t] = 0.35 * F2[t-1] + rng.normal(0, 0.9)
+
+    # F3: Credit/Policy — low-frequency driver, higher persistence
+    F3 = np.zeros(T)
+    F3[0] = rng.normal(0, 1.0)
+    for t in range(1, T):
+        F3[t] = 0.4 * F3[t-1] + rng.normal(0, 0.8)
+
+    Z = np.vstack([F1, F2, F3]).T  # (T, 3)
+
+    # Regime-specific factor loadings (rotating dominance)
     betas = [
-        np.array([1.2, 0.2]),  # calm: market dominates
-        np.array([0.3, 1.2])   # crisis: vol dominates
-    ]
-    garch = [
-        (0.02, 0.05, 0.9),     # (omega, a, b)
-        (0.05, 0.12, 0.85)
+        np.array([1.1, 0.1, -0.1]),   # Expansion: market exposure dominates
+        np.array([0.2, 1.0, 0.15]),    # Transition: supply/term spread dominates
+        np.array([-0.1, 0.15, 1.1]),   # Stress: credit/policy risk dominates
     ]
 
+    # Build regime index
     reg_idx = np.zeros(T, dtype=int)
     start = 0
     for k, L in enumerate(regime_lengths):
         reg_idx[start:start+L] = k
         start += L
 
-    h = np.zeros(T)
-    eta = np.zeros(T)
-    r = np.zeros(T)
+    # Simulate
+    Y = np.zeros(T)
+    eps = rng.normal(0, noise_sigma, size=T)
 
-    h[0] = 0.1
-    for tt in range(T):
-        k = reg_idx[tt]
-        omega, a, b = garch[k]
-        if tt > 0:
-            h[tt] = omega + a*eta[tt-1]**2 + b*h[tt-1]
-        eta[tt] = rng.normal(0, np.sqrt(h[tt]))
-        r[tt] = Z[tt] @ betas[k] + eta[tt]
+    for t in range(T):
+        k = reg_idx[t]
+        ar_part = phi * Y[t-1] if t > 0 else 0.0
+        Y[t] = ar_part + Z[t] @ betas[k] + eps[t]
 
-    true_imp = np.zeros((T, 2))
+    # True importance: [lag-1, F1, F2, F3]
+    true_imp = np.zeros((T, 4))
     sig_Z = Z.std(axis=0)
-    for tt in range(T):
-        k = reg_idx[tt]
-        true_imp[tt] = _std_importance(betas[k], sig_Z)
+    for t in range(T):
+        k = reg_idx[t]
+        coefs = np.concatenate([[phi], betas[k]])
+        sigmas = np.concatenate([[1.0], sig_Z])
+        true_imp[t] = _std_importance(coefs, sigmas)
 
-    return r, Z, true_imp
+    return Y, Z, true_imp
 
 def save_dataset(name, Y, Z, true_imp, output_dir="examples/datasets/simulated"):
     """Save a dataset to CSV files."""
@@ -352,10 +406,10 @@ if __name__ == "__main__":
     Y, Z, true_imp = sim_spike_process(T=T, seed=2)
     save_dataset("spike_process", Y, Z, true_imp)
 
-    # 5. GARCH with regime-shifting factors
-    print("\n6. Generating garch_regime...")
-    Y, Z, true_imp = sim_regime_garch_factors(T=T, seed=4)
-    save_dataset("garch_regime", Y, Z, true_imp)
+    # 5. Regime-switching factor model
+    print("\n5. Generating switching_factor...")
+    Y, Z, true_imp = sim_switching_factor(T=T, seed=4)
+    save_dataset("switching_factor", Y, Z, true_imp)
 
     print("\n" + "="*60)
     print("All datasets generated successfully!")

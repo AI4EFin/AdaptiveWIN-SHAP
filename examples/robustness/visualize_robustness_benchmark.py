@@ -652,7 +652,7 @@ def main():
         'arx_rotating': [500, 1000],
         'trend_season': [500, 1000],
         'spike_process': [750],
-        'garch_regime': [750]
+        'switching_factor': [500, 1000]
     }
     breakpoints = breakpoints_map.get(args.dataset, None)
 

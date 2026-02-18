@@ -12,14 +12,15 @@ datasets=(
 #    "arx_rotating"
 #    "trend_season"
 #    "spike_process"
-#    "garch_regime"
+#    "switching_factor"
 )
 
-# Configuration (matching run_all_simulations.sh)
+# Configuration (must match run_all_simulations.sh)
 N0=100
 JUMP=1
-ROLLING_MEAN_WINDOW=10
+ROLLING_MEAN_WINDOW=75
 GROWTH="geometric"
+PENALTY_FACTOR=0.1
 
 # Track results
 declare -a results
@@ -37,7 +38,8 @@ for dataset in "${datasets[@]}"; do
         --n0 $N0 \
         --jump $JUMP \
         --rolling-mean-window $ROLLING_MEAN_WINDOW \
-        --growth $GROWTH
+        --growth $GROWTH \
+        --penalty-factor $PENALTY_FACTOR
 
     if [ $? -eq 0 ]; then
         results+=("$dataset : SUCCESS")
@@ -63,6 +65,6 @@ echo "All benchmarks complete!"
 echo "============================================================"
 echo ""
 echo "Next steps:"
-echo "1. Review benchmark results in examples/results/benchmark_*/"
+echo "1. Review benchmark results in examples/results/benchmark_*/N0_${N0}_lambda_${PENALTY_FACTOR}/"
 echo "2. Run visualization script for each dataset"
 echo "============================================================"
