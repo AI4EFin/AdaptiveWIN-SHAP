@@ -25,23 +25,22 @@ fi
 # Array of all datasets
 datasets=(
 #    "piecewise_ar3"
-#    "arx_rotating"
+    "arx_rotating"
     "trend_season"
-    "spike_process"
-    "switching_factor"
+    "piecewise_ar3_long"
+    "arx_rotating_long"
 )
 
 # Configuration (matching lstm_simulation.py defaults and 01_lpa_sensitivity.py)
 N0=100
 JUMP=1
-STEP=2
+STEP=1
 ALPHA=0.95
 NUM_RUNS=1
 GROWTH="geometric"
 GROWTH_BASE=1.41421356237     # sqrt(2)
 MC_REPS=300
-PENALTY_FACTOR=0.1
-ROLLING_MEAN_WINDOW=75
+PENALTY_FACTOR=0.0
 
 # Track results
 declare -a window_results

@@ -576,9 +576,9 @@ if __name__ == "__main__":
             "piecewise_ar3": {"seq_length": 3, "n_covariates": 0},  # AR(3)
             "arx_rotating": {"seq_length": 3, "n_covariates": 3},   # AR(3) + 3 covariates (D,F,R)
             "trend_season": {"seq_length": 3, "n_covariates": 0},   # AR(3) with structural break
-            "spike_process": {"seq_length": 3, "n_covariates": 2},  # AR(3) + 2 covariates (D,R) + spikes
+            "piecewise_ar3_long": {"seq_length": 3, "n_covariates": 0},  # AR(3), 7 unequal regimes
+            "arx_rotating_long": {"seq_length": 3, "n_covariates": 3},  # AR(3) + 3 covariates, 7 unequal regimes
             "tvp_arx": {"seq_length": 3, "n_covariates": 2},        # AR(3) + 2 covariates (Z1,Z2), time-varying
-            "switching_factor": {"seq_length": 1, "n_covariates": 3},  # Factor model + 3 factors (Market, Supply, Credit)
             "cointegration": {"seq_length": 1, "n_covariates": 4},  # Cointegration: 2 important (X1,X2) + 2 noise (X3,X4)
         }
 

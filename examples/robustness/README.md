@@ -110,7 +110,7 @@ examples/results/robustness/lpa_sensitivity/
 
 ```bash
 python examples/robustness/01_lpa_sensitivity.py \
-    --datasets piecewise_ar3 trend_season spike_process \
+    --datasets piecewise_ar3 trend_season piecewise_ar3_long \
     --n-runs 2
 ```
 

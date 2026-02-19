@@ -91,8 +91,7 @@ if __name__ == "__main__":
             search_step=STEP,
             alpha=ALPHA,
             t_workers=10,
-            debug_anim=True,
-            save_path=f"{out_dir}/run_{run}.mp4"
+            debug_anim=False
         )
 
         pd.DataFrame(results).to_csv(out_csv)

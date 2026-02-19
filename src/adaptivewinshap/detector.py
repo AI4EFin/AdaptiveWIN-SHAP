@@ -18,7 +18,6 @@ except ImportError:
     tqdm = None
 
 from .model import AdaptiveModel
-from .animator import SlidingWindowAnimator
 
 
 class ChangeDetector:
@@ -834,6 +833,7 @@ class ChangeDetector:
         x_axis = np.arange(len(self.data), dtype=float)  # absolute index as x
         animator = None  # Initialize to None
         if debug_anim:
+            from .animator import SlidingWindowAnimator
             animator = SlidingWindowAnimator(
                 x_axis, np.asarray(target_data, dtype=float),
                 title="Adaptive WIN-SHAP",

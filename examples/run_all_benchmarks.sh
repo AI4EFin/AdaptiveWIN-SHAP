@@ -11,8 +11,8 @@ datasets=(
     "piecewise_ar3"
 #    "arx_rotating"
 #    "trend_season"
-#    "spike_process"
-#    "switching_factor"
+#    "piecewise_ar3_long"
+#    "arx_rotating_long"
 )
 
 # Configuration (must match run_all_simulations.sh)

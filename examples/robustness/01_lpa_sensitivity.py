@@ -39,8 +39,8 @@ class LPASensitivityExperiment:
         "piecewise_ar3": {"seq_length": 3, "n_covariates": 0},
         "arx_rotating": {"seq_length": 3, "n_covariates": 3},
         "trend_season": {"seq_length": 3, "n_covariates": 0},
-        "spike_process": {"seq_length": 3, "n_covariates": 2},
-        "switching_factor": {"seq_length": 1, "n_covariates": 3},
+        "piecewise_ar3_long": {"seq_length": 3, "n_covariates": 0},
+        "arx_rotating_long": {"seq_length": 3, "n_covariates": 3},
     }
 
     def __init__(self, output_dir='examples/results/robustness/lpa_sensitivity'):
@@ -270,8 +270,8 @@ class LPASensitivityExperiment:
             'piecewise_ar3': [500, 1000],  # regime changes at t=500, 1000
             'arx_rotating': [500, 1000],
             'trend_season': [500, 1000],
-            'spike_process': [750],  # single breakpoint at t=750
-            'switching_factor': [500, 1000]
+            'piecewise_ar3_long': [500, 900, 1200, 1800, 2600, 3600],
+            'arx_rotating_long': [500, 900, 1200, 1800, 2600, 3600]
         }
 
         if dataset_name not in true_breakpoints:
@@ -564,11 +564,11 @@ def main():
     else:
         # Full grid
         param_grid = {
-            'N0': [75, 100, 125, 150, 175, 200],
+            'N0': [75, 100, 125, 150],
             # 'alpha': [0.90, 0.95, 0.99],
             'alpha': [0.95],
-            'mc_reps': [100, 200, 300],
-            'penalty_factor': [0.0, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3],
+            'mc_reps': [300],
+            'penalty_factor': [0.0, 0.05, 0.1, 0.15, 0.2],
             'growth_base': [1.41421356237]  # sqrt(2)
         }
 

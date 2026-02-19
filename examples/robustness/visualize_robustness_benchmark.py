@@ -651,8 +651,8 @@ def main():
         'piecewise_ar3': [500, 1000],
         'arx_rotating': [500, 1000],
         'trend_season': [500, 1000],
-        'spike_process': [750],
-        'switching_factor': [500, 1000]
+        'piecewise_ar3_long': [500, 900, 1200, 1800, 2600, 3600],
+        'arx_rotating_long': [500, 900, 1200, 1800, 2600, 3600]
     }
     breakpoints = breakpoints_map.get(args.dataset, None)
 
