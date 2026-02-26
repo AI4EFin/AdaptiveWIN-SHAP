@@ -1,0 +1,36 @@
+{
+  "scenario_name": "l2_30",
+  "l2_reduction_factor": 0.3,
+  "max_pairwise_l2": 0.8810550493584383,
+  "regime_lengths": [
+    500,
+    500,
+    500
+  ],
+  "regimes": [
+    {
+      "regime_id": 0,
+      "parameters": {
+        "phi_1": 0.722,
+        "phi_2": 0.099,
+        "phi_3": 0.099
+      }
+    },
+    {
+      "regime_id": 1,
+      "parameters": {
+        "phi_1": 0.099,
+        "phi_2": 0.722,
+        "phi_3": 0.099
+      }
+    },
+    {
+      "regime_id": 2,
+      "parameters": {
+        "phi_1": 0.099,
+        "phi_2": 0.099,
+        "phi_3": 0.722
+      }
+    }
+  ]
+}

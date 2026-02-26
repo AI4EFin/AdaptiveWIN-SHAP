@@ -61,8 +61,8 @@ def main():
         help='Explicit path to result directory containing windows.csv'
     )
     parser.add_argument(
-        '--rolling-mean', type=int, default=20,
-        help='Rolling mean window size (default: 20)'
+        '--rolling-mean', type=int, default=10,
+        help='Rolling mean window size (default: 10)'
     )
     parser.add_argument(
         '--no-show', action='store_true',

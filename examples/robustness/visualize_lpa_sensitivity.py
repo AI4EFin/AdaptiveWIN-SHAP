@@ -1,796 +1,355 @@
 """
 Visualize LPA Sensitivity Analysis Results
 
-This script creates comprehensive visualizations for LPA parameter sensitivity
-analysis, including individual parameter effects and aggregated summaries.
+Scans config directories under the results folder to reconstruct metrics
+from the actual runs, then creates parameter sensitivity plots for:
+  1. Correlation with true feature importances vs N0, B (mc_reps), penalty_factor
+  2. Window mean vs N0, B (mc_reps), penalty_factor
 
 Usage:
-    # Visualize single dataset
     python examples/robustness/visualize_lpa_sensitivity.py --dataset piecewise_ar3
-
-    # Visualize all datasets
-    python examples/robustness/visualize_lpa_sensitivity.py --all-datasets
-
-    # Enable window analysis
-    python examples/robustness/visualize_lpa_sensitivity.py --dataset piecewise_ar3 --window-analysis
 """
 
 import argparse
+import re
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from pathlib import Path
 import sys
 
-from visualize_robustness import RobustnessVisualizer, DATASET_BREAKPOINTS
+DATASET_BREAKPOINTS = {
+    'piecewise_ar3': [500, 1000],
+    'arx_rotating': [500, 1000],
+    'piecewise_ar3_long': [500, 900, 1200, 1800, 2600, 3600],
+    'arx_rotating_long': [500, 900, 1200, 1800, 2600, 3600],
+}
 
 
-def _load_windows_for_config(row, dataset_dir, results_dir):
-    """Load a windows.csv for a given results row, trying multiple path strategies."""
-    # 1. Use window_csv column directly
-    if 'window_csv' in row.index and pd.notna(row.get('window_csv')):
-        p = Path(row['window_csv'])
-        if p.exists():
-            return pd.read_csv(p)
+# ---------------------------------------------------------------------------
+# Data loading: scan config directories as the single source of truth
+# ---------------------------------------------------------------------------
 
-    # 2. Build expected path from parameters
-    parts = [f"N0{int(row['N0'])}", f"alpha{row['alpha']}"]
-    if 'mc_reps' in row.index and pd.notna(row.get('mc_reps')):
-        parts.append(f"mc_reps{int(row['mc_reps'])}")
-    if 'penalty_factor' in row.index and pd.notna(row.get('penalty_factor')):
-        parts.append(f"penalty_factor{row['penalty_factor']}")
-    if 'growth_base' in row.index and pd.notna(row.get('growth_base')):
-        parts.append(f"growth_base{row['growth_base']}")
-    param_str = "temp_" + "_".join(parts)
-
-    for base in [dataset_dir, results_dir]:
-        candidate = base / param_str / "windows.csv"
-        if candidate.exists():
-            return pd.read_csv(candidate)
-
-    return None
+def _parse_config_dir(dirname: str) -> dict | None:
+    """Extract parameters from a temp_* directory name."""
+    m = re.match(
+        r'temp_N0(\d+)_alpha([\d.]+)_mc_reps(\d+)_penalty_factor([\d.]+)_growth_base([\d.]+)',
+        dirname,
+    )
+    if not m:
+        return None
+    return {
+        'N0': int(m.group(1)),
+        'alpha': float(m.group(2)),
+        'mc_reps': int(m.group(3)),
+        'penalty_factor': float(m.group(4)),
+    }
 
 
-def _plot_window_over_time_grid(
-    results_df: pd.DataFrame,
-    dataset_dir: Path,
+def _compute_correlation(config_dir: Path, true_imp_df: pd.DataFrame) -> float | None:
+    """Compute mean per-feature correlation between |SHAP| and true importances."""
+    shap_path = config_dir / 'benchmark' / 'adaptive_shap_results.csv'
+    if not shap_path.exists():
+        return None
+
+    shap_df = pd.read_csv(shap_path)
+    shap_cols = [c for c in shap_df.columns if c.startswith('shap_')]
+    true_cols = list(true_imp_df.columns)
+
+    if len(shap_cols) != len(true_cols):
+        return None
+
+    correlations = []
+    for shap_col, true_col in zip(shap_cols, true_cols):
+        shap_vals = np.abs(shap_df[shap_col].values)
+        end_indices = shap_df['end_index'].astype(int).values
+        end_indices = np.clip(end_indices, 0, len(true_imp_df) - 1)
+        true_vals = true_imp_df[true_col].iloc[end_indices].values
+
+        mask = ~(np.isnan(shap_vals) | np.isnan(true_vals))
+        if mask.sum() > 10:
+            corr = np.corrcoef(shap_vals[mask], true_vals[mask])[0, 1]
+            if not np.isnan(corr):
+                correlations.append(corr)
+
+    return float(np.mean(correlations)) if correlations else None
+
+
+def _extract_benchmark_metrics(config_dir: Path, method: str = 'adaptive_shap') -> dict:
+    """Extract metrics for a given method from benchmark_summary.csv."""
+    summary_path = config_dir / 'benchmark' / 'benchmark_summary.csv'
+    if not summary_path.exists():
+        return {}
+
+    df = pd.read_csv(summary_path)
+    df = df[df['method'] == method]
+
+    metrics = {}
+    for _, row in df.iterrows():
+        key = f"{row['metric_type']}_{row['evaluation']}"
+        metrics[key] = row['score']
+    return metrics
+
+
+def _compute_oracle_window(n_timepoints: int, breakpoints: list[int]) -> np.ndarray:
+    """
+    Compute the oracle window at each timepoint.
+
+    The oracle window at time t is the number of past observations belonging
+    to the same regime, i.e. t - last_breakpoint (or t+1 for the first regime).
+    """
+    oracle = np.zeros(n_timepoints)
+    # Sorted breakpoints + boundaries
+    boundaries = [0] + sorted(breakpoints) + [n_timepoints]
+    for i in range(len(boundaries) - 1):
+        start, end = boundaries[i], boundaries[i + 1]
+        for t in range(start, end):
+            oracle[t] = t - start + 1
+    return oracle
+
+
+def _compute_window_metrics(
+    config_dir: Path, breakpoints: list[int]
+) -> dict:
+    """Compute window_mean and mean absolute difference to oracle window."""
+    windows_path = config_dir / 'windows.csv'
+    if not windows_path.exists():
+        return {}
+
+    wdf = pd.read_csv(windows_path)
+    col = 'window_mean' if 'window_mean' in wdf.columns else wdf.columns[0]
+    lpa_windows = wdf[col].values
+
+    # Drop leading NaNs (burn-in period where LPA hasn't started)
+    valid_mask = ~np.isnan(lpa_windows)
+    if valid_mask.sum() == 0:
+        return {}
+
+    metrics = {'window_mean': float(np.nanmean(lpa_windows))}
+
+    # Oracle window for the full series length
+    n = len(lpa_windows)
+    oracle = _compute_oracle_window(n, breakpoints)
+
+    # Mean absolute difference (only where LPA has values)
+    diff = np.abs(lpa_windows[valid_mask] - oracle[valid_mask])
+    metrics['oracle_mae'] = float(np.mean(diff))
+
+    return metrics
+
+
+def load_results_from_configs(
     results_dir: Path,
     dataset_name: str,
-    output_dir: Path,
-):
+    true_imp_path: Path | None = None,
+    breakpoints: list[int] | None = None,
+) -> pd.DataFrame:
     """
-    Plot window size over time for every configuration, laid out as a grid.
-
-    Creates two figures:
-    - Grid by N0 (subplots), lines colored by penalty_factor (mc_reps fixed to first value)
-    - Grid by penalty_factor (subplots), lines colored by N0 (mc_reps fixed to first value)
-
-    Breakpoints are shown as vertical dashed lines.
-    Figures are saved into *output_dir*.
-    """
-    breakpoints = DATASET_BREAKPOINTS.get(dataset_name, [])
-
-    # Fix mc_reps to first available value (they produce identical windows)
-    mc_col = 'mc_reps' if 'mc_reps' in results_df.columns else None
-    if mc_col and results_df[mc_col].nunique() > 1:
-        fixed_mc = sorted(results_df[mc_col].unique())[0]
-        df = results_df[results_df[mc_col] == fixed_mc].copy()
-    else:
-        df = results_df.copy()
-        fixed_mc = None
-
-    n0_values = sorted(df['N0'].unique())
-    pf_col = 'penalty_factor'
-    has_pf = pf_col in df.columns and df[pf_col].nunique() > 1
-    pf_values = sorted(df[pf_col].unique()) if has_pf else [None]
-
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    # ---------- Figure 1: one subplot per N0, lines by penalty_factor ----------
-    n_cols = min(3, len(n0_values))
-    n_rows = int(np.ceil(len(n0_values) / n_cols))
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(7 * n_cols, 4.5 * n_rows),
-                             sharex=True, sharey=True, squeeze=False)
-
-    cmap = plt.cm.viridis
-    pf_norm = plt.Normalize(min(pf_values) if has_pf else 0,
-                            max(pf_values) if has_pf else 1)
-
-    for idx, n0 in enumerate(n0_values):
-        ax = axes[idx // n_cols][idx % n_cols]
-        subset = df[df['N0'] == n0]
-
-        for _, row in subset.iterrows():
-            pf_val = row[pf_col] if has_pf else 0
-            wdf = _load_windows_for_config(row, dataset_dir, results_dir)
-            if wdf is None:
-                continue
-            col = 'window_mean' if 'window_mean' in wdf.columns else wdf.columns[0]
-            color = cmap(pf_norm(pf_val)) if has_pf else 'steelblue'
-            label = f"pf={pf_val}" if has_pf else None
-            ax.plot(wdf.index, wdf[col], linewidth=1.0, alpha=0.8, color=color, label=label)
-
-        for bp in breakpoints:
-            ax.axvline(bp, color='red', linestyle='--', linewidth=1.2, alpha=0.7)
-
-        ax.set_title(f"N0 = {int(n0)}", fontsize=12, fontweight='bold')
-        ax.set_xlabel('Timepoint')
-        ax.set_ylabel('Window size')
-        ax.grid(True, alpha=0.25)
-
-    # Hide unused subplots
-    for idx in range(len(n0_values), n_rows * n_cols):
-        axes[idx // n_cols][idx % n_cols].set_visible(False)
-
-    # Colour bar for penalty_factor
-    if has_pf:
-        sm = plt.cm.ScalarMappable(cmap=cmap, norm=pf_norm)
-        sm.set_array([])
-        cbar = fig.colorbar(sm, ax=axes, shrink=0.6, pad=0.02)
-        cbar.set_label('penalty_factor', fontsize=11)
-
-    mc_note = f" (mc_reps={int(fixed_mc)})" if fixed_mc is not None else ""
-    fig.suptitle(f"{dataset_name}: Window over time by N0{mc_note}",
-                 fontsize=14, fontweight='bold', y=1.01)
-    fig.tight_layout()
-    out = output_dir / 'window_over_time_by_n0.png'
-    fig.savefig(out, dpi=200, bbox_inches='tight')
-    plt.close(fig)
-    print(f"  Saved: {out}")
-
-    # ---------- Figure 2: one subplot per penalty_factor, lines by N0 ----------
-    if has_pf:
-        n_cols2 = min(4, len(pf_values))
-        n_rows2 = int(np.ceil(len(pf_values) / n_cols2))
-        fig2, axes2 = plt.subplots(n_rows2, n_cols2, figsize=(6 * n_cols2, 4.5 * n_rows2),
-                                   sharex=True, sharey=True, squeeze=False)
-
-        n0_cmap = plt.cm.plasma
-        n0_norm = plt.Normalize(min(n0_values), max(n0_values))
-
-        for idx, pf_val in enumerate(pf_values):
-            ax = axes2[idx // n_cols2][idx % n_cols2]
-            subset = df[df[pf_col] == pf_val]
-
-            for _, row in subset.iterrows():
-                wdf = _load_windows_for_config(row, dataset_dir, results_dir)
-                if wdf is None:
-                    continue
-                col = 'window_mean' if 'window_mean' in wdf.columns else wdf.columns[0]
-                ax.plot(wdf.index, wdf[col], linewidth=1.0, alpha=0.8,
-                        color=n0_cmap(n0_norm(row['N0'])))
-
-            for bp in breakpoints:
-                ax.axvline(bp, color='red', linestyle='--', linewidth=1.2, alpha=0.7)
-
-            ax.set_title(f"pf = {pf_val}", fontsize=12, fontweight='bold')
-            ax.set_xlabel('Timepoint')
-            ax.set_ylabel('Window size')
-            ax.grid(True, alpha=0.25)
-
-        for idx in range(len(pf_values), n_rows2 * n_cols2):
-            axes2[idx // n_cols2][idx % n_cols2].set_visible(False)
-
-        sm2 = plt.cm.ScalarMappable(cmap=n0_cmap, norm=n0_norm)
-        sm2.set_array([])
-        cbar2 = fig2.colorbar(sm2, ax=axes2, shrink=0.6, pad=0.02)
-        cbar2.set_label('N0', fontsize=11)
-
-        fig2.suptitle(f"{dataset_name}: Window over time by penalty_factor{mc_note}",
-                      fontsize=14, fontweight='bold', y=1.01)
-        fig2.tight_layout()
-        out2 = output_dir / 'window_over_time_by_penalty_factor.png'
-        fig2.savefig(out2, dpi=200, bbox_inches='tight')
-        plt.close(fig2)
-        print(f"  Saved: {out2}")
-
-
-def _plot_individual_window_runs(
-    results_df: pd.DataFrame,
-    dataset_dir: Path,
-    results_dir: Path,
-    dataset_name: str,
-):
-    """
-    Save one window-over-time plot per configuration, next to its windows.csv.
-
-    Each figure shows the window evolution for that single run with breakpoints
-    marked, making it easy to inspect individual configurations.
-    """
-    breakpoints = DATASET_BREAKPOINTS.get(dataset_name, [])
-    count = 0
-
-    for _, row in results_df.iterrows():
-        # Resolve the directory that holds windows.csv
-        config_dir = None
-        if 'window_csv' in row.index and pd.notna(row.get('window_csv')):
-            p = Path(row['window_csv'])
-            if p.exists():
-                config_dir = p.parent
-
-        if config_dir is None:
-            parts = [f"N0{int(row['N0'])}", f"alpha{row['alpha']}"]
-            if 'mc_reps' in row.index and pd.notna(row.get('mc_reps')):
-                parts.append(f"mc_reps{int(row['mc_reps'])}")
-            if 'penalty_factor' in row.index and pd.notna(row.get('penalty_factor')):
-                parts.append(f"penalty_factor{row['penalty_factor']}")
-            if 'growth_base' in row.index and pd.notna(row.get('growth_base')):
-                parts.append(f"growth_base{row['growth_base']}")
-            param_str = "temp_" + "_".join(parts)
-            for base in [dataset_dir, results_dir]:
-                candidate = base / param_str
-                if (candidate / "windows.csv").exists():
-                    config_dir = candidate
-                    break
-
-        if config_dir is None:
-            continue
-
-        wdf = _load_windows_for_config(row, dataset_dir, results_dir)
-        if wdf is None:
-            continue
-
-        col = 'window_mean' if 'window_mean' in wdf.columns else wdf.columns[0]
-
-        fig, ax = plt.subplots(figsize=(12, 4))
-        fig.patch.set_alpha(0)
-        ax.set_facecolor('none')
-
-        ax.plot(wdf.index, wdf[col], linewidth=1.0, color='#4A74AA', alpha=1.0, label='Window size')
-        rolling = wdf[col].rolling(window=10, center=True).mean()
-        ax.plot(wdf.index, rolling, linewidth=2.0, color='#DB3549', label='MA(10)')
-
-        for bp in breakpoints:
-            ax.axvline(bp, color='#DB3549', linestyle='--', linewidth=1.5, alpha=0.7,
-                       label='Breakpoint' if bp == breakpoints[0] else None)
-
-        # Build a concise title from the parameters
-        title_parts = [f"N0={int(row['N0'])}"]
-        if 'alpha' in row.index:
-            title_parts.append(f"alpha={row['alpha']}")
-        if 'mc_reps' in row.index and pd.notna(row.get('mc_reps')):
-            title_parts.append(f"mc_reps={int(row['mc_reps'])}")
-        if 'penalty_factor' in row.index and pd.notna(row.get('penalty_factor')):
-            title_parts.append(f"pf={row['penalty_factor']}")
-        title = f"{dataset_name}  |  {', '.join(title_parts)}"
-
-        ax.set_title(title, fontsize=11, fontweight='bold')
-        ax.set_ylabel('Window size')
-        ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.12),
-                  fontsize=9, ncol=3, frameon=False)
-
-        fig.tight_layout()
-        out = config_dir / 'window_over_time.png'
-        fig.savefig(out, dpi=150, bbox_inches='tight', transparent=True)
-        plt.close(fig)
-        count += 1
-
-    print(f"  Saved {count} individual window plots (window_over_time.png in each config dir)")
-
-
-def visualize_single_dataset(
-    dataset_name: str,
-    results_dir: Path,
-    output_dir: Path,
-    mif_lif_mode: str = 'all',
-    window_analysis: bool = False,
-    growth_strategy: str = None
-):
-    """
-    Create visualizations for a single dataset.
+    Scan all temp_* config directories and build a results DataFrame.
 
     Parameters
     ----------
+    results_dir : Path
+        Top-level results directory (contains dataset subdirectories).
     dataset_name : str
-        Name of dataset
-    results_dir : Path
-        Directory with LPA sensitivity results
-    output_dir : Path
-        Output directory for figures
-    mif_lif_mode : str
-        MIF/LIF display mode: 'ratio', 'all', or 'individual'
-    window_analysis : bool
-        Whether to create window analysis plots
-    growth_strategy : str
-        Window growth strategy to visualize (kept for backwards compatibility)
+        Name of the dataset subdirectory to scan.
+    true_imp_path : Path or None
+        Path to true_importances.csv for computing correlation.
+    breakpoints : list of int or None
+        Known breakpoint positions for oracle window computation.
+
+    Returns
+    -------
+    pd.DataFrame with one row per config, columns for parameters + metrics.
     """
-    print(f"\n{'='*80}")
-    print(f"Visualizing LPA Sensitivity: {dataset_name}")
-    if growth_strategy:
-        print(f"Growth Strategy: {growth_strategy}")
-    print(f"{'='*80}\n")
-
-    # Load results - try from growth subdirectory first, then fall back to main directory
     dataset_dir = results_dir / dataset_name
+    if breakpoints is None:
+        breakpoints = DATASET_BREAKPOINTS.get(dataset_name, [])
 
-    # If growth strategy is specified, look in that subdirectory
-    if growth_strategy:
-        growth_dir = dataset_dir / growth_strategy
-        if growth_dir.exists():
-            # Check if summary exists in growth subdirectory
-            summary_file = growth_dir.parent / 'sensitivity_summary.csv'
-            if not summary_file.exists():
-                # Try loading from parent and filtering
-                summary_file = dataset_dir / 'sensitivity_summary.csv'
-            dataset_dir = growth_dir
-        else:
-            print(f"Warning: Growth directory not found: {growth_dir}")
-            print(f"Trying to filter results from main directory...")
-            summary_file = dataset_dir / 'sensitivity_summary.csv'
-    else:
-        summary_file = dataset_dir / 'sensitivity_summary.csv'
+    true_imp_df = None
+    if true_imp_path and true_imp_path.exists():
+        true_imp_df = pd.read_csv(true_imp_path)
 
-    if not summary_file.exists():
-        # Fallback: try results.csv (produced by 01_lpa_sensitivity.py)
-        fallback = dataset_dir / 'results.csv'
-        if fallback.exists():
-            summary_file = fallback
-        else:
-            # Also try parent results.csv filtered by dataset
-            parent_results = results_dir / 'results.csv'
-            if parent_results.exists():
-                summary_file = parent_results
-            else:
-                print(f"Warning: No results found for {dataset_name}")
-                return
+    rows = []
+    for config_dir in sorted(dataset_dir.iterdir()):
+        if not config_dir.is_dir() or not config_dir.name.startswith('temp_'):
+            continue
 
-    results_df = pd.read_csv(summary_file)
+        params = _parse_config_dir(config_dir.name)
+        if params is None:
+            continue
 
-    # Filter to this dataset if loaded from a global results file
-    if 'dataset' in results_df.columns:
-        results_df = results_df[results_df['dataset'] == dataset_name].copy()
+        # Window mean + oracle MAE
+        win_metrics = _compute_window_metrics(config_dir, breakpoints)
+        params.update(win_metrics)
 
-    # Filter by growth strategy if specified
-    if growth_strategy and 'growth' in results_df.columns:
-        results_df = results_df[results_df['growth'] == growth_strategy].copy()
-        print(f"Filtered to {growth_strategy} growth strategy")
+        # Benchmark metrics for adaptive_shap
+        bench = _extract_benchmark_metrics(config_dir, method='adaptive_shap')
+        params.update(bench)
 
-    print(f"Loaded {len(results_df)} parameter combinations")
+        # Correlation with true importances
+        if true_imp_df is not None:
+            corr = _compute_correlation(config_dir, true_imp_df)
+            if corr is not None:
+                params['correlation_true_imp_mean'] = corr
 
-    # Initialize visualizer with growth-specific output directory
-    if growth_strategy:
-        viz_output_dir = output_dir / dataset_name / growth_strategy
-        title_prefix = f"{dataset_name} ({growth_strategy})"
-    else:
-        viz_output_dir = output_dir / dataset_name
-        title_prefix = dataset_name
+        rows.append(params)
 
-    viz = RobustnessVisualizer(output_dir=viz_output_dir)
+    if not rows:
+        return pd.DataFrame()
 
-    # Compute MIF/LIF ratios
-    results_df = viz.compute_mif_lif_ratios(results_df, percentiles=[50, 90])
-
-    # Determine metric columns based on mif_lif_mode
-    if mif_lif_mode == 'ratio':
-        metric_cols = ['faithfulness', 'mif_lif_ratio_p50', 'mif_lif_ratio_p90', 'window_mean']
-    elif mif_lif_mode == 'all':
-        metric_cols = ['faithfulness', 'mif_lif_ratio_p50', 'mif_lif_ratio_p90',
-                      'ablation_mif_p50', 'ablation_mif_p90',
-                      'ablation_lif_p50', 'ablation_lif_p90', 'window_mean']
-    else:  # individual
-        metric_cols = ['faithfulness', 'ablation_mif_p50', 'ablation_mif_p90',
-                      'ablation_lif_p50', 'ablation_lif_p90', 'window_mean']
-
-    # Filter metric_cols to only include columns that exist in the data
-    metric_cols = [m for m in metric_cols if m in results_df.columns]
-
-    if len(metric_cols) == 0:
-        # Fallback to any numeric columns
-        numeric_cols = results_df.select_dtypes(include=['float64', 'int64']).columns.tolist()
-        metric_cols = [c for c in numeric_cols if c not in ['N0', 'alpha', 'mc_reps', 'penalty_factor', 'growth_base', 'num_bootstrap']]
-
-    print(f"Available metrics: {metric_cols}")
-
-    # 1. N0 sensitivity
-    print("\n1. Creating N0 sensitivity plots...")
-    for metric in metric_cols:
-        if metric in results_df.columns:
-            viz.plot_parameter_sensitivity(
-                results_df=results_df,
-                param_col='N0',
-                metric_cols=metric,
-                dataset_name=dataset_name,
-                title=f'{title_prefix}: {metric} vs N0',
-                save_name=f'n0_sensitivity_{metric}',
-                ylabel=metric.replace('_', ' ').title(),
-                show_error_bars=True
-            )
-            plt.close()
-
-    # 2. Alpha sensitivity
-    print("2. Creating alpha sensitivity plots...")
-    for metric in metric_cols:
-        if metric in results_df.columns:
-            viz.plot_parameter_sensitivity(
-                results_df=results_df,
-                param_col='alpha',
-                metric_cols=metric,
-                dataset_name=dataset_name,
-                title=f'{title_prefix}: {metric} vs alpha',
-                save_name=f'alpha_sensitivity_{metric}',
-                ylabel=metric.replace('_', ' ').title(),
-                show_error_bars=True
-            )
-            plt.close()
-
-    # 3. mc_reps sensitivity
-    mc_reps_col = 'mc_reps' if 'mc_reps' in results_df.columns else 'num_bootstrap'
-    print(f"3. Creating {mc_reps_col} sensitivity plots...")
-    if mc_reps_col in results_df.columns:
-        for metric in metric_cols:
-            if metric in results_df.columns:
-                viz.plot_parameter_sensitivity(
-                    results_df=results_df,
-                    param_col=mc_reps_col,
-                    metric_cols=metric,
-                    dataset_name=dataset_name,
-                    title=f'{title_prefix}: {metric} vs {mc_reps_col}',
-                    save_name=f'{mc_reps_col}_sensitivity_{metric}',
-                    ylabel=metric.replace('_', ' ').title(),
-                    show_error_bars=True
-                )
-                plt.close()
-
-    # 3b. penalty_factor sensitivity
-    if 'penalty_factor' in results_df.columns and results_df['penalty_factor'].nunique() > 1:
-        print("3b. Creating penalty_factor sensitivity plots...")
-        for metric in metric_cols:
-            if metric in results_df.columns:
-                viz.plot_parameter_sensitivity(
-                    results_df=results_df,
-                    param_col='penalty_factor',
-                    metric_cols=metric,
-                    dataset_name=dataset_name,
-                    title=f'{title_prefix}: {metric} vs penalty_factor',
-                    save_name=f'penalty_factor_sensitivity_{metric}',
-                    ylabel=metric.replace('_', ' ').title(),
-                    show_error_bars=True
-                )
-                plt.close()
-
-    # 4. Multi-metric comparison for N0
-    print("4. Creating multi-metric N0 comparison...")
-    # Use first 3 available metrics
-    if len(metric_cols) >= 3:
-        multi_metrics = metric_cols[:3]
-    else:
-        multi_metrics = metric_cols
-
-    if len(multi_metrics) > 0:
-        viz.plot_parameter_sensitivity(
-            results_df=results_df,
-            param_col='N0',
-            metric_cols=multi_metrics,
-            dataset_name=dataset_name,
-            title=f'{title_prefix}: All Metrics vs N0',
-            save_name='n0_sensitivity_all_metrics',
-            ylabel='Score',
-            show_error_bars=False
-        )
-        plt.close()
-
-    # 5. Heatmap: N0 vs alpha for first available metric
-    print("5. Creating parameter combination heatmap...")
-    if 'N0' in results_df.columns and 'alpha' in results_df.columns and len(metric_cols) > 0:
-        # Use first available metric
-        heatmap_metric = metric_cols[0]
-        try:
-            # Aggregate over mc_reps/penalty_factor
-            heatmap_data = results_df.groupby(['N0', 'alpha'])[heatmap_metric].mean().unstack()
-
-            viz.plot_heatmap(
-                data=heatmap_data,
-                title=f'{title_prefix}: {heatmap_metric} (N0 vs alpha)',
-                save_name=f'n0_alpha_{heatmap_metric}_heatmap',
-                cmap='RdYlGn',
-                fmt='.3f'
-            )
-            plt.close()
-        except Exception as e:
-            print(f"  Warning: Could not create heatmap: {e}")
-
-    # 6. Stability summary
-    print("6. Creating stability summary...")
-    if len(metric_cols) > 0:
-        try:
-            viz.plot_stability_summary(
-                results_df=results_df,
-                metric_cols=metric_cols,
-                stability_threshold=0.2,
-                title=f'{title_prefix}: Stability Assessment',
-                save_name='stability_summary'
-            )
-            plt.close()
-        except Exception as e:
-            print(f"  Warning: Could not create stability summary: {e}")
-
-    # 7. Window over time for all configs
-    print("\n7. Creating window-over-time grid plots...")
-    _plot_window_over_time_grid(
-        results_df=results_df,
-        dataset_dir=dataset_dir,
-        results_dir=results_dir,
-        dataset_name=dataset_name,
-        output_dir=viz_output_dir,
-    )
-
-    # 7b. Individual window-over-time plot per config (saved next to each windows.csv)
-    print("\n7b. Creating individual window-over-time plots per config...")
-    _plot_individual_window_runs(
-        results_df=results_df,
-        dataset_dir=dataset_dir,
-        results_dir=results_dir,
-        dataset_name=dataset_name,
-    )
-
-    # 8. Window analysis (if enabled)
-    if window_analysis:
-        print("\n8. Creating window analysis plots...")
-
-        # Get breakpoints for this dataset
-        breakpoints = DATASET_BREAKPOINTS.get(dataset_name, None)
-        if breakpoints is None:
-            print(f"  Warning: No breakpoints defined for {dataset_name}, skipping window analysis")
-        else:
-            # Window vs parameters
-            print("  a. Window size vs parameters...")
-            param_candidates = ['N0', 'alpha']
-            if 'mc_reps' in results_df.columns:
-                param_candidates.append('mc_reps')
-            elif 'num_bootstrap' in results_df.columns:
-                param_candidates.append('num_bootstrap')
-            if 'penalty_factor' in results_df.columns and results_df['penalty_factor'].nunique() > 1:
-                param_candidates.append('penalty_factor')
-            for param in param_candidates:
-                fig = viz.plot_window_vs_parameters(
-                    results_df=results_df,
-                    param_col=param,
-                    dataset_name=dataset_name,
-                    save_name=f'window_mean_vs_{param.lower()}',
-                    window_stat='mean'
-                )
-                if fig:
-                    plt.close(fig)
-
-            # Find best configuration (highest value of first available metric)
-            if len(metric_cols) > 0:
-                best_idx = results_df[metric_cols[0]].idxmax()
-            else:
-                best_idx = results_df['window_mean'].idxmax()  # Fallback
-            best_config = results_df.loc[best_idx]
-
-            # Build path to windows.csv for best config
-            N0_int = int(best_config['N0'])
-            alpha_val = best_config['alpha']
-
-            # Build param_str matching the format used by 01_lpa_sensitivity.py
-            # Format: temp_N0{val}_alpha{val}_mc_reps{val}_penalty_factor{val}_growth_base{val}
-            param_parts = [f"N0{N0_int}", f"alpha{alpha_val}"]
-            if 'mc_reps' in best_config:
-                param_parts.append(f"mc_reps{int(best_config['mc_reps'])}")
-            elif 'num_bootstrap' in best_config:
-                param_parts.append(f"num_bootstrap{int(best_config['num_bootstrap'])}")
-            if 'penalty_factor' in best_config:
-                param_parts.append(f"penalty_factor{best_config['penalty_factor']}")
-            if 'growth_base' in best_config:
-                param_parts.append(f"growth_base{best_config['growth_base']}")
-            param_str = "temp_" + "_".join(param_parts)
-
-            # Try different path combinations
-            possible_paths = [
-                dataset_dir / param_str / "windows.csv",  # New format
-            ]
-            # Also try legacy format with num_bootstrap
-            if 'num_bootstrap' in best_config:
-                num_boot = int(best_config['num_bootstrap'])
-                possible_paths.append(dataset_dir / f"temp_N{N0_int}_alpha{alpha_val}_num_bootstrap{num_boot}/windows.csv")
-
-            # Also glob for any matching temp dir
-            for temp_dir in dataset_dir.glob(f"temp_*N0{N0_int}*"):
-                candidate = temp_dir / "windows.csv"
-                if candidate.exists() and candidate not in possible_paths:
-                    possible_paths.append(candidate)
-
-            windows_csv = None
-            for path in possible_paths:
-                if path.exists():
-                    windows_csv = path
-                    break
-
-            if windows_csv and windows_csv.exists():
-                print(f"  b. Loading windows from best config ({param_str})...")
-                windows_df = pd.read_csv(windows_csv)
-
-                # Window evolution
-                print("  c. Window evolution over time...")
-                fig = viz.plot_window_evolution(
-                    windows_df=windows_df,
-                    dataset_name=dataset_name,
-                    breakpoints=breakpoints,
-                    save_name='window_evolution_best',
-                    show_statistics=True
-                )
-                if fig:
-                    plt.close(fig)
-
-                # Window distribution
-                print("  d. Window size distribution...")
-                fig = viz.plot_window_distribution(
-                    windows_df=windows_df,
-                    dataset_name=dataset_name,
-                    breakpoints=breakpoints,
-                    save_name='window_distribution_best'
-                )
-                if fig:
-                    plt.close(fig)
-
-                # True vs detected windows
-                print("  e. True vs detected window comparison...")
-                fig = viz.plot_true_vs_detected_windows(
-                    windows_df=windows_df,
-                    dataset_name=dataset_name,
-                    breakpoints=breakpoints,
-                    save_name='true_vs_detected_windows'
-                )
-                if fig:
-                    plt.close(fig)
-            else:
-                if windows_csv:
-                    print(f"  Warning: Windows file not found: {windows_csv}")
-                else:
-                    print(f"  Warning: Could not find windows.csv in any expected location")
-
-    print(f"\nAll visualizations saved to: {viz_output_dir}")
+    return pd.DataFrame(rows)
 
 
-def create_cross_dataset_summary(
-    results_dir: Path,
-    output_dir: Path,
-    datasets: list,
-    growth_strategy: str = None
+# ---------------------------------------------------------------------------
+# Plotting
+# ---------------------------------------------------------------------------
+
+# Parameters to plot (skip alpha since only one value was tested)
+PARAM_COLS = ['N0', 'mc_reps', 'penalty_factor']
+PARAM_LABELS = {'N0': r'$N_0$', 'mc_reps': r'$B$', 'penalty_factor': r'$\lambda$'}
+
+
+def _setup_clean_ax(ax):
+    """Apply clean/transparent aesthetic to an axis."""
+    ax.set_facecolor('none')
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.spines['left'].set_linewidth(0.8)
+    ax.spines['bottom'].set_linewidth(0.8)
+    ax.tick_params(width=0.8)
+
+
+def plot_param_sensitivity(
+    results_df: pd.DataFrame,
+    metric_col: str,
+    output_path: Path,
+    ylabel: str = '',
+    title: str = '',
+    color: str = '#4A74AA',
 ):
     """
-    Create summary comparing results across all datasets.
+    Create a 1x3 figure showing metric vs N0, B, penalty_factor.
 
-    Parameters
-    ----------
-    results_dir : Path
-        Directory with LPA sensitivity results
-    output_dir : Path
-        Output directory for figures
-    datasets : list
-        List of dataset names
-    growth_strategy : str
-        Window growth strategy to visualize (kept for backwards compatibility)
+    Each subplot groups by one parameter and averages over the others,
+    showing mean +/- standard error.
     """
-    print(f"\n{'='*80}")
-    print("Creating Cross-Dataset Summary")
-    if growth_strategy:
-        print(f"Growth Strategy: {growth_strategy}")
-    print(f"{'='*80}\n")
-
-    # Load all results
-    all_results = {}
-    for dataset_name in datasets:
-        summary_file = results_dir / dataset_name / 'sensitivity_summary.csv'
-        if not summary_file.exists():
-            summary_file = results_dir / dataset_name / 'results.csv'
-        if not summary_file.exists():
-            # Try global results.csv
-            global_file = results_dir / 'results.csv'
-            if global_file.exists():
-                summary_file = global_file
-        if summary_file.exists():
-            df = pd.read_csv(summary_file)
-            if 'dataset' in df.columns:
-                df = df[df['dataset'] == dataset_name].copy()
-            # Filter by growth strategy if specified
-            if growth_strategy and 'growth' in df.columns:
-                df = df[df['growth'] == growth_strategy].copy()
-            if len(df) > 0:  # Only include if data remains after filtering
-                all_results[dataset_name] = df
-
-    if not all_results:
-        print("No results found for cross-dataset summary")
+    available = [p for p in PARAM_COLS if p in results_df.columns]
+    if not available or metric_col not in results_df.columns:
+        print(f"  Skipping {metric_col}: missing columns")
         return
 
-    # Initialize visualizer with growth-specific output directory
-    if growth_strategy:
-        viz_output_dir = output_dir / 'cross_dataset' / growth_strategy
-        title_suffix = f" ({growth_strategy})"
+    n = len(available)
+    fig, axes = plt.subplots(1, n, figsize=(5 * n, 4))
+    fig.patch.set_alpha(0)
+    if n == 1:
+        axes = [axes]
+
+    for ax, param in zip(axes, available):
+        _setup_clean_ax(ax)
+
+        grouped = results_df.groupby(param)[metric_col].agg(['mean', 'std', 'count'])
+        grouped['se'] = grouped['std'] / np.sqrt(grouped['count'])
+
+        ax.errorbar(
+            grouped.index, grouped['mean'],
+            yerr=1.96 * grouped['se'],
+            marker='o', capsize=4, capthick=1.5,
+            linewidth=1.8, markersize=6,
+            color=color, ecolor=color, alpha=0.9,
+        )
+
+        ax.set_xlabel(PARAM_LABELS.get(param, param), fontsize=13)
+        if ax is axes[0]:
+            ax.set_ylabel(ylabel, fontsize=13)
+
+    if title:
+        fig.suptitle(title, fontsize=14, fontweight='bold', y=1.02)
+
+    fig.tight_layout()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(output_path, dpi=200, bbox_inches='tight', transparent=True)
+    plt.close(fig)
+    print(f"  Saved: {output_path}")
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+def visualize_dataset(
+    dataset_name: str,
+    results_dir: Path,
+    output_dir: Path,
+    datasets_root: Path,
+):
+    """Create all plots for one dataset."""
+    print(f"\n{'='*70}")
+    print(f"  LPA Sensitivity Visualization: {dataset_name}")
+    print(f"{'='*70}\n")
+
+    # Locate true importances
+    true_imp_path = datasets_root / dataset_name / 'true_importances.csv'
+    if not true_imp_path.exists():
+        print(f"  Warning: true_importances.csv not found at {true_imp_path}")
+        true_imp_path = None
+
+    # Load results from config directories
+    print("  Loading results from config directories...")
+    results_df = load_results_from_configs(results_dir, dataset_name, true_imp_path)
+
+    if results_df.empty:
+        print("  No results found. Exiting.")
+        return
+
+    print(f"  Loaded {len(results_df)} configurations")
+    print(f"  Parameters: N0={sorted(results_df['N0'].unique())}, "
+          f"mc_reps={sorted(results_df['mc_reps'].unique())}, "
+          f"penalty_factor={sorted(results_df['penalty_factor'].unique())}")
+    print(f"  Metrics: {[c for c in results_df.columns if c not in PARAM_COLS + ['alpha']]}")
+
+    out = output_dir / dataset_name
+
+    # 1. Correlation with true importances vs parameters
+    if 'correlation_true_imp_mean' in results_df.columns:
+        print("\n  1. Correlation with true importances vs parameters")
+        plot_param_sensitivity(
+            results_df, 'correlation_true_imp_mean',
+            output_path=out / 'correlation_vs_params.png',
+            ylabel='Correlation with true importances',
+            title=f'{dataset_name}: Correlation vs LPA parameters',
+            color='#4A74AA',
+        )
     else:
-        viz_output_dir = output_dir / 'cross_dataset'
-        title_suffix = ""
+        print("\n  1. Skipping correlation plot (no true importances data)")
 
-    viz = RobustnessVisualizer(output_dir=viz_output_dir)
+    # 2. Window mean vs parameters
+    if 'window_mean' in results_df.columns:
+        print("\n  2. Window mean vs parameters")
+        plot_param_sensitivity(
+            results_df, 'window_mean',
+            output_path=out / 'window_mean_vs_params.png',
+            ylabel='Mean window size',
+            title=f'{dataset_name}: Window mean vs LPA parameters',
+            color='#DB3549',
+        )
+    else:
+        print("\n  2. Skipping window_mean plot (no window data)")
 
-    # Find common metrics across all datasets
-    all_metrics_sets = [set(df.columns) for df in all_results.values()]
-    common_metrics = set.intersection(*all_metrics_sets) if all_metrics_sets else set()
+    # 3. Mean absolute difference to oracle window vs parameters
+    if 'oracle_mae' in results_df.columns:
+        print("\n  3. Oracle window MAE vs parameters")
+        plot_param_sensitivity(
+            results_df, 'oracle_mae',
+            output_path=out / 'oracle_mae_vs_params.png',
+            ylabel='MAE to oracle window',
+            title=f'{dataset_name}: Window accuracy vs LPA parameters',
+            color='#2E8B57',
+        )
+    else:
+        print("\n  3. Skipping oracle MAE plot (no window data)")
 
-    # Define preferred metrics in order of importance
-    preferred_metrics = ['mif_lif_ratio_p50', 'mif_lif_ratio_p90', 'faithfulness',
-                        'ablation_mif_p50', 'ablation_mif_p90',
-                        'ablation_lif_p50', 'ablation_lif_p90',
-                        'window_mean', 'window_std']
-
-    # Use common metrics that are in preferred list, or just window_mean as fallback
-    metric_cols = [m for m in preferred_metrics if m in common_metrics]
-    if not metric_cols:
-        metric_cols = ['window_mean'] if 'window_mean' in common_metrics else []
-
-    # Limit to first 3 metrics for cleaner plots
-    metric_cols = metric_cols[:3]
-
-    print(f"Common metrics across datasets: {metric_cols}")
-
-    # 1. Multi-metric comparison across datasets
-    if len(metric_cols) > 0:
-        print("1. Creating cross-dataset metric comparison...")
-        try:
-            viz.plot_multi_metric_comparison(
-                results_dict=all_results,
-                metric_cols=metric_cols,
-                title=f'LPA Sensitivity: Cross-Dataset Comparison{title_suffix}',
-                save_name='cross_dataset_metrics'
-            )
-            plt.close()
-        except Exception as e:
-            print(f"  Warning: Could not create cross-dataset comparison: {e}")
-
-    # 2. Create summary report
-    print("2. Creating summary report...")
-
-    test_results = {}
-    for dataset_name, df in all_results.items():
-        # Use all numeric columns for this dataset
-        param_exclude = {'N0', 'alpha', 'mc_reps', 'penalty_factor', 'growth_base', 'num_bootstrap'}
-        dataset_metrics = [col for col in df.columns
-                          if df[col].dtype in ['float64', 'int64'] and
-                          col not in param_exclude]
-
-        metrics_stats = {}
-        for metric in dataset_metrics:
-            if metric in df.columns:
-                values = df[metric].values
-                metrics_stats[metric] = {
-                    'mean': values.mean(),
-                    'std': values.std(),
-                    'min': values.min(),
-                    'max': values.max()
-                }
-
-        # Find best configuration
-        if 'faithfulness' in df.columns:
-            best_idx = df['faithfulness'].idxmax()
-            best_config = df.loc[best_idx]
-            findings = [
-                f"Best faithfulness: {best_config['faithfulness']:.4f}",
-                f"Optimal N0: {best_config['N0']:.0f}",
-                f"Optimal alpha: {best_config['alpha']:.3f}",
-            ]
-            if 'mc_reps' in best_config:
-                findings.append(f"Optimal mc_reps: {best_config['mc_reps']:.0f}")
-            if 'penalty_factor' in best_config:
-                findings.append(f"Optimal penalty_factor: {best_config['penalty_factor']:.3f}")
-        else:
-            findings = []
-
-        test_results[dataset_name] = {
-            'description': 'LPA parameter sensitivity analysis',
-            'metrics': metrics_stats,
-            'datasets': [dataset_name],
-            'n_experiments': len(df),
-            'findings': findings
-        }
-
-    viz.create_summary_report(
-        test_results=test_results,
-        output_name='lpa_sensitivity_summary'
-    )
-
-    print(f"\nCross-dataset summary saved to: {viz_output_dir}")
+    print(f"\n  All plots saved to: {out}")
 
 
 def main():
@@ -798,84 +357,40 @@ def main():
         description='Visualize LPA sensitivity analysis results'
     )
     parser.add_argument(
-        '--dataset',
-        type=str,
-        default=None,
-        help='Dataset name to visualize (e.g., piecewise_ar3)'
+        '--dataset', type=str, default='piecewise_ar3',
+        help='Dataset name to visualize (default: piecewise_ar3)',
     )
     parser.add_argument(
-        '--all-datasets',
-        action='store_true',
-        help='Visualize all datasets'
-    )
-    parser.add_argument(
-        '--results-dir',
-        type=str,
+        '--results-dir', type=str,
         default='examples/results/robustness/lpa_sensitivity',
-        help='Directory containing LPA sensitivity results'
+        help='Directory containing LPA sensitivity results',
     )
     parser.add_argument(
-        '--output-dir',
-        type=str,
+        '--output-dir', type=str,
         default='examples/results/robustness/figures/lpa_sensitivity',
-        help='Output directory for figures'
+        help='Output directory for figures',
     )
     parser.add_argument(
-        '--mif-lif-mode',
-        type=str,
-        choices=['ratio', 'all', 'individual'],
-        default='all',
-        help='MIF/LIF display mode: "ratio" (show only ratios), "all" (ratios + individual scores), "individual" (individual scores only)'
-    )
-    parser.add_argument(
-        '--window-analysis',
-        action='store_true',
-        help='Enable window size analysis plots'
-    )
-    parser.add_argument(
-        '--growth',
-        type=str,
-        choices=['geometric'],
-        default='geometric',
-        help='Window growth strategy (geometric only, kept for backwards compatibility)'
+        '--datasets-root', type=str,
+        default='examples/datasets/simulated',
+        help='Root directory for dataset files (containing true_importances.csv)',
     )
 
     args = parser.parse_args()
 
     results_dir = Path(args.results_dir)
     output_dir = Path(args.output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    datasets_root = Path(args.datasets_root)
 
     if not results_dir.exists():
         print(f"Error: Results directory not found: {results_dir}")
-        print("\nPlease run LPA sensitivity analysis first:")
-        print("  python examples/robustness/01_lpa_sensitivity.py --quick-test")
         sys.exit(1)
 
-    # Determine datasets to process
-    if args.all_datasets:
-        datasets = [d.name for d in results_dir.iterdir() if d.is_dir()]
-    elif args.dataset:
-        datasets = [args.dataset]
-    else:
-        print("Error: Please specify --dataset or --all-datasets")
-        sys.exit(1)
+    visualize_dataset(args.dataset, results_dir, output_dir, datasets_root)
 
-    # Process each dataset
-    for dataset_name in datasets:
-        visualize_single_dataset(dataset_name, results_dir, output_dir,
-                                mif_lif_mode=args.mif_lif_mode,
-                                window_analysis=args.window_analysis,
-                                growth_strategy=args.growth)
-
-    # Create cross-dataset summary if multiple datasets
-    if len(datasets) > 1:
-        create_cross_dataset_summary(results_dir, output_dir, datasets,
-                                    growth_strategy=args.growth)
-
-    print("\n" + "="*80)
-    print("Visualization complete!")
-    print("="*80)
+    print("\n" + "=" * 70)
+    print("  Done.")
+    print("=" * 70)
 
 
 if __name__ == "__main__":

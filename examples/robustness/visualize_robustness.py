@@ -617,7 +617,7 @@ class RobustnessVisualizer:
         title: Optional[str] = None,
         save_name: Optional[str] = None,
         breakpoints: Optional[List[int]] = None,
-        show_statistics: bool = True,
+        show_statistics: bool = False,
         rolling_mean_size: int = 20
     ) -> plt.Figure:
         """
@@ -657,7 +657,7 @@ class RobustnessVisualizer:
         # Plot mean if available
         if 'window_mean' in windows_df.columns:
             mean_vals = windows_df['window_mean'].values
-            ax.plot(windows_df.index, mean_vals, linewidth=2, label='Mean', color='#3B75AF')
+            ax.plot(windows_df.index, mean_vals, linewidth=2, label='Window', color='#3B75AF')
 
             # Add rolling mean
             rolling_mean = pd.Series(mean_vals).rolling(window=rolling_mean_size, center=True).mean()
@@ -683,15 +683,11 @@ class RobustnessVisualizer:
         if breakpoints is not None:
             for i, bp in enumerate(breakpoints):
                 ax.axvline(bp, color='red', linestyle='--', linewidth=2, alpha=0.7)
-                ax.text(bp, ax.get_ylim()[1] * 0.95, f'Regime {i+2}',
-                       ha='left', va='top', fontsize=10, color='red',
-                       bbox=dict(boxstyle='round', facecolor='white', alpha=0.7))
 
         ax.set_xlabel('Timepoint', fontsize=11)
         ax.set_ylabel('Window Size', fontsize=11)
         ax.set_title(title or f'{dataset_name}: Window Size Evolution', fontsize=12, pad=15)
-        ax.legend(frameon=True, fancybox=True)
-        ax.grid(True, alpha=0.3, linestyle='--')
+        ax.legend(frameon=False, fancybox=False, loc='upper center', bbox_to_anchor=(0.5, -0.1), ncol=2)
 
         # Add statistics panel if requested
         if show_statistics and 'window_mean' in windows_df.columns:

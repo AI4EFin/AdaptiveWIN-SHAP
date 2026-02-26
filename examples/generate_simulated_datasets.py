@@ -90,27 +90,33 @@ def sim_piecewise_ar3_rotating(T=1500, seed=123, noise_sigma=1.0,
 
 def sim_piecewise_arx_rotating_drivers(T=1500, p=3, seed=0,
                                        regime_lengths=(500, 500, 500),
-                                       noise_sigma=0.5):
+                                       noise_sigma=1):
     """
     Y_t depends on p lags + 3 covariates (D, F, R),
     with regime-wise rotating dominance in covariate coefficients.
     """
     rng = np.random.default_rng(seed)
 
-    # Covariates: iid standard normal (clean signal, regime change comes from betas)
-    D = rng.normal(0, 1.0, size=T)
-    F = rng.normal(0, 1.0, size=T)
-    R = rng.normal(0, 1.0, size=T)
+    # Independent AR(1) covariates, all same persistence
+    rho = 0.95
+    innov = np.sqrt(1 - rho**2)  # marginal var ≈ 1
+    D = np.zeros(T)
+    F = np.zeros(T)
+    R = np.zeros(T)
+    for t in range(1, T):
+        D[t] = rho * D[t-1] + rng.normal(0, noise_sigma)
+        F[t] = rho * F[t-1] + rng.normal(0, noise_sigma)
+        R[t] = rho * R[t-1] + rng.normal(0, noise_sigma)
 
     Z = np.vstack([D, F, R]).T  # (T,3)
 
-    # Regime-specific coefficients
-    # lags roughly stable, covariates rotate
-    phi = np.array([0.10, 0.05, 0.02])  # AR(3) base (weak, so covariates dominate)
+    # AR(3) nearly zero — covariates carry all signal (mirroring piecewise_ar3 structure)
+    # Characteristic poly: 1 - 0.01z - 0.01z² - 0.01z³, sum|phi|=0.03 << 1, trivially stationary
+    phi = np.array([0.01, 0.01, 0.01])
     betas = [
-        np.array([0.2, 1.2, -0.1]),  # Regime 1: fuel dominates
-        np.array([1.2, 0.2, -0.1]),  # Regime 2: demand dominates
-        np.array([0.2, -0.1, 1.2])   # Regime 3: RES dominates
+        np.array([0.9, 0.01, 0.01]),  # Regime 1: D dominates
+        np.array([0.01, 0.9, 0.01]),  # Regime 2: F dominates
+        np.array([0.01, 0.01, 0.9])   # Regime 3: R dominates
     ]
 
     # Build regime index
@@ -129,7 +135,7 @@ def sim_piecewise_arx_rotating_drivers(T=1500, p=3, seed=0,
         for j in range(1, p+1):
             if t-j >= 0:
                 ar_part += phi[j-1]*Y[t-j]
-        Y[t] = ar_part + Z[t] @ betas[k] + eps[t]
+        Y[t] = ar_part + Z[t] @ betas[k] #+ eps[t]
 
     # True importance per t over features: [lags p] + [D,F,R]
     true_imp = np.zeros((T, p+3))
@@ -245,19 +251,25 @@ def sim_arx_rotating_long(p=3, seed=11, noise_sigma=0.5,
     T = sum(regime_lengths)
     rng = np.random.default_rng(seed)
 
-    # Covariates: iid standard normal
-    D = rng.normal(0, 1.0, size=T)
-    F = rng.normal(0, 1.0, size=T)
-    R = rng.normal(0, 1.0, size=T)
+    # Independent AR(1) covariates, all same persistence
+    rho = 0.95
+    innov = np.sqrt(1 - rho**2)
+    D = np.zeros(T)
+    F = np.zeros(T)
+    R = np.zeros(T)
+    for t in range(1, T):
+        D[t] = rho * D[t-1] + rng.normal(0, innov)
+        F[t] = rho * F[t-1] + rng.normal(0, innov)
+        R[t] = rho * R[t-1] + rng.normal(0, innov)
     Z = np.vstack([D, F, R]).T  # (T,3)
 
-    phi = np.array([0.10, 0.05, 0.02])  # weak AR
+    phi = np.array([0.01, 0.01, 0.01])  # AR nearly zero, matching short version
 
-    # 3 beta patterns, cycled across 7 regimes
+    # 3 beta patterns, cycled across 7 regimes (mirroring piecewise_ar3 structure)
     beta_patterns = [
-        np.array([0.2, 1.2, -0.1]),   # fuel dominates
-        np.array([1.2, 0.2, -0.1]),   # demand dominates
-        np.array([0.2, 0.1, 1.2]),   # RES dominates
+        np.array([0.9, 0.01, 0.01]),   # D dominates
+        np.array([0.01, 0.9, 0.01]),   # F dominates
+        np.array([0.01, 0.01, 0.9]),   # R dominates
     ]
     betas = [beta_patterns[k % 3] for k in range(len(regime_lengths))]
 

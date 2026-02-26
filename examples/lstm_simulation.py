@@ -64,6 +64,9 @@ if __name__ == "__main__":
     # input_size = 1 (target) + n_covariates
     DATASET_CONFIGS = {
         "line_std_1": {"seq_length": 1, "n_covariates": 0},
+        "line_std_10": {"seq_length": 1, "n_covariates": 0},
+        "line_std_25": {"seq_length": 1, "n_covariates": 0},
+        "line_std_50": {"seq_length": 1, "n_covariates": 0},
         "piecewise_ar3": {"seq_length": 3, "n_covariates": 0},  # AR(3)
         "arx_rotating": {"seq_length": 3, "n_covariates": 3},   # AR(3) + 3 covariates (D,F,R)
         "trend_season": {"seq_length": 3, "n_covariates": 0},   # AR(3) with structural break

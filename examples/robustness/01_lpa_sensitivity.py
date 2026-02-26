@@ -565,9 +565,8 @@ def main():
         # Full grid
         param_grid = {
             'N0': [75, 100, 125, 150],
-            # 'alpha': [0.90, 0.95, 0.99],
             'alpha': [0.95],
-            'mc_reps': [300],
+            'mc_reps': [100, 200, 300],
             'penalty_factor': [0.0, 0.05, 0.1, 0.15, 0.2],
             'growth_base': [1.41421356237]  # sqrt(2)
         }
