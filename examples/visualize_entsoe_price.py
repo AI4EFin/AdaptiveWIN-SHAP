@@ -65,9 +65,9 @@ GROUP_COLORS = {
 
 def load_paths(n0, penalty_factor):
     """Build all result paths given LPA parameters."""
-    data_dir = "examples/datasets/empirical/entsoe_ro_price"
-    detection_dir = f"examples/results/LSTM/entsoe_ro_price/Jump_1_N0_{n0}_lambda_{penalty_factor}"
-    benchmark_dir = f"examples/results/benchmark_entsoe_ro_price/N0_{n0}_lambda_{penalty_factor}"
+    data_dir = "examples/datasets/empirical/entsoe_ro_price_test"
+    detection_dir = f"examples/results/LSTM/entsoe_ro_price_test/Jump_1_N0_{n0}_lambda_{penalty_factor}"
+    benchmark_dir = f"examples/results/benchmark_entsoe_ro_price_test/N0_{n0}_lambda_{penalty_factor}"
     figures_dir = os.path.join(benchmark_dir, "figures")
     os.makedirs(figures_dir, exist_ok=True)
 
@@ -122,12 +122,11 @@ def plot_data_overview(paths):
     ax.set_xlabel('Date')
     ax.set_ylabel(ylabel)
     ax.set_title('ENTSO-E Romania: Day-Ahead Electricity Price (2022-2026)')
-    ax.legend(loc='upper right', frameon=True)
-    ax.grid(True, alpha=0.3, linestyle='--')
+    ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=3, frameon=False)
 
-    ax.xaxis.set_major_locator(mdates.MonthLocator(interval=3))
-    ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
-    fig.autofmt_xdate(rotation=45)
+    ax.xaxis.set_major_locator(mdates.MonthLocator(interval=1))
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%d-%m-%Y'))
+    # fig.autofmt_xdate(rotation=45)
 
     fig.tight_layout()
 
@@ -149,6 +148,10 @@ def plot_window_evolution(paths, rolling_mean_size=168):
 
     windows_df = pd.read_csv(windows_path, index_col=0)
 
+    # Load datetime index from data CSV
+    data_df = pd.read_csv(paths['data_csv'], index_col=0, parse_dates=True)
+    time_idx = data_df.index[:len(windows_df)]
+
     fig, ax = plt.subplots(figsize=(16, 5))
 
     if 'window_mean' in windows_df.columns:
@@ -157,27 +160,20 @@ def plot_window_evolution(paths, rolling_mean_size=168):
         wcols = [c for c in windows_df.columns if c.startswith('windows')]
         vals = windows_df[wcols[0]].values
 
-    time_idx = np.arange(len(vals))
     ax.plot(time_idx, vals, linewidth=0.8, alpha=0.6, color='#3B75AF', label='Window Size')
 
     rolling = pd.Series(vals).rolling(window=rolling_mean_size, center=True, min_periods=1).mean()
     ax.plot(time_idx, rolling, linewidth=2, color='red', label=f'Rolling Mean ({rolling_mean_size})')
 
-    stats_text = (
-        f"Mean: {vals.mean():.0f}\n"
-        f"Std: {vals.std():.0f}\n"
-        f"Min: {vals.min():.0f}\n"
-        f"Max: {vals.max():.0f}"
-    )
-    ax.text(0.02, 0.98, stats_text, transform=ax.transAxes, fontsize=9,
-            verticalalignment='top',
-            bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
-
-    ax.set_xlabel('Timepoint (hourly)')
+    ax.set_xlabel('Date')
     ax.set_ylabel('Adaptive Window Size (hours)')
     ax.set_title('ENTSO-E Romania Price: Adaptive Window Size Evolution')
-    ax.legend(frameon=True)
-    ax.grid(True, alpha=0.3, linestyle='--')
+    ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=3, frameon=False)
+
+    ax.xaxis.set_major_locator(mdates.MonthLocator(interval=1))
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%d-%m-%Y'))
+    # fig.autofmt_xdate(rotation=45)
+
     fig.tight_layout()
 
     save_path = os.path.join(paths['figures_dir'], 'window_sizes.png')
@@ -406,8 +402,8 @@ def main():
     )
     parser.add_argument('--n0', type=int, default=168,
                         help='N0 value used in detection (default: 168)')
-    parser.add_argument('--penalty-factor', type=float, default=0.1,
-                        help='Penalty factor lambda (default: 0.1)')
+    parser.add_argument('--penalty-factor', type=float, default=0.15,
+                        help='Penalty factor lambda (default: 0.15)')
     parser.add_argument('--smoothing', type=int, default=168,
                         help='Smoothing window for lag importance (default: 168 = 1 week)')
     parser.add_argument('--no-show', action='store_true',

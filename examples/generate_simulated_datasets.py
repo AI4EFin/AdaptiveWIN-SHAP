@@ -97,26 +97,19 @@ def sim_piecewise_arx_rotating_drivers(T=1500, p=3, seed=0,
     """
     rng = np.random.default_rng(seed)
 
-    # Independent AR(1) covariates, all same persistence
-    rho = 0.95
-    innov = np.sqrt(1 - rho**2)  # marginal var ≈ 1
-    D = np.zeros(T)
-    F = np.zeros(T)
-    R = np.zeros(T)
-    for t in range(1, T):
-        D[t] = rho * D[t-1] + rng.normal(0, noise_sigma)
-        F[t] = rho * F[t-1] + rng.normal(0, noise_sigma)
-        R[t] = rho * R[t-1] + rng.normal(0, noise_sigma)
+    # Independent iid covariates (stationary, unit variance)
+    D = rng.normal(0, 1, size=T)
+    F = rng.normal(0, 1, size=T)
+    R = rng.normal(0, 1, size=T)
 
-    Z = np.vstack([D, F, R]).T  # (T,3)
+    Z = np.vstack([D, F, R]).T
 
     # AR(3) nearly zero — covariates carry all signal (mirroring piecewise_ar3 structure)
-    # Characteristic poly: 1 - 0.01z - 0.01z² - 0.01z³, sum|phi|=0.03 << 1, trivially stationary
     phi = np.array([0.01, 0.01, 0.01])
     betas = [
-        np.array([0.9, 0.01, 0.01]),  # Regime 1: D dominates
-        np.array([0.01, 0.9, 0.01]),  # Regime 2: F dominates
-        np.array([0.01, 0.01, 0.9])   # Regime 3: R dominates
+        np.array([2.0, 0.01, 0.01]),  # Regime 1: D dominates
+        np.array([0.01, 2.0, 0.01]),  # Regime 2: F dominates
+        np.array([0.01, 0.01, 2.0])   # Regime 3: R dominates
     ]
 
     # Build regime index
@@ -344,7 +337,7 @@ if __name__ == "__main__":
 
     # 2. ARX with rotating covariate drivers
     print("\n2. Generating arx_rotating...")
-    Y, Z, true_imp = sim_piecewise_arx_rotating_drivers(T=T, seed=0)
+    Y, Z, true_imp = sim_piecewise_arx_rotating_drivers(T=T, seed=123)
     save_dataset("arx_rotating", Y, Z, true_imp)
 
     # 3. Trend + seasonality + AR break

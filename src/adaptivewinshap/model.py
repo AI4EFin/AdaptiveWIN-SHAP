@@ -28,7 +28,7 @@ class AdaptiveModel(nn.Module):
 
     def fit(self, X, y):
         ds = TensorDataset(X, y)
-        dl = DataLoader(ds, batch_size=self.batch_size, shuffle=False)
+        dl = DataLoader(ds, batch_size=self.batch_size, shuffle=True)
         model = self.to(self.device)
         opt = torch.optim.AdamW(model.parameters(), lr=self.lr)
         loss_fn = nn.MSELoss()
@@ -79,7 +79,7 @@ class AdaptiveModel(nn.Module):
         self.eval()
         with torch.no_grad():
             all_pred, all_y = [], []
-            evl = DataLoader(ds, batch_size=batch_size, shuffle=False)
+            evl = DataLoader(ds, batch_size=batch_size, shuffle=True)
             for xb, yb in evl:
                 xb = xb.to(self.device)
                 yb = yb.to(self.device)

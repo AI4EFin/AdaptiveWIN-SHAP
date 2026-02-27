@@ -1,10 +1,11 @@
 """
 Visualization script for DGP Parameter Robustness results.
 
-Generates 3 publication-quality figures:
-  1. Window size evolution across scenarios (4 stacked panels)
+Generates 4 publication-quality figures:
+  1. Window size evolution across scenarios (stacked panels)
   2. SHAP correlation with true importances per regime (grouped bars)
   3. Method comparison: faithfulness + ablation across L2 distances (line plots)
+  4. Oracle window MAE + SHAP correlation per regime vs L2 distance (line plots)
 
 Usage:
     python examples/robustness/visualize_dgp_robustness.py
@@ -36,11 +37,11 @@ BASELINE_REGIMES = [
     np.array([0.01, 0.01, 0.9]),
 ]
 CENTROID = np.mean(BASELINE_REGIMES, axis=0)
-REDUCTION_FACTORS = [0.0, 0.50, 0.75, 0.90]
+REDUCTION_FACTORS = [0.0, 0.10, 0.20, 0.30, 0.40, 0.50, 0.75, 0.90]
 REGIME_LENGTHS = (500, 500, 500)
 TRUE_BREAKPOINTS = [500, 1000]
 
-SCENARIO_DIRS = ['baseline', 'l2_50', 'l2_75', 'l2_90']
+SCENARIO_DIRS = ['baseline', 'l2_10', 'l2_20', 'l2_30', 'l2_40', 'l2_50', 'l2_75', 'l2_90']
 
 # Methods to compare in Figure 3
 CORE_METHODS = ['adaptive_shap', 'global_shap', 'rolling_shap', 'timeshap']
@@ -73,6 +74,22 @@ def get_scenario_info():
             label = f'{int(t*100)}% reduction ($\\ell_2$={max_l2:.2f})'
         info.append({'name': name, 'label': label, 't': t, 'max_l2': max_l2})
     return info
+
+
+def compute_oracle_window(n_timepoints, breakpoints):
+    """
+    Compute the oracle window at each timepoint.
+
+    The oracle window at time t is the number of past observations belonging
+    to the same regime, i.e. t - last_breakpoint (or t+1 for the first regime).
+    """
+    oracle = np.zeros(n_timepoints)
+    boundaries = [0] + sorted(breakpoints) + [n_timepoints]
+    for i in range(len(boundaries) - 1):
+        start, end = boundaries[i], boundaries[i + 1]
+        for t in range(start, end):
+            oracle[t] = t - start + 1
+    return oracle
 
 
 def load_windows(results_dir, scenario_name):
@@ -113,23 +130,30 @@ def load_shap_correlation(results_dir, scenario_name, datasets_base):
     if not shap_cols or not true_cols:
         return [np.nan] * 3
 
-    n = min(len(shap_df), len(true_df))
-    shap_values = shap_df[shap_cols].iloc[:n].values
-    true_values = true_df[true_cols].iloc[:n].values
+    # Use end_index to align SHAP rows to the correct time points
+    end_indices = shap_df['end_index'].astype(int).values
+    shap_values = shap_df[shap_cols].values
+    true_values = true_df[true_cols].values
 
     breakpoints = [0, REGIME_LENGTHS[0], REGIME_LENGTHS[0] + REGIME_LENGTHS[1], sum(REGIME_LENGTHS)]
     regime_corrs = []
 
     for i in range(3):
         start, end = breakpoints[i], breakpoints[i + 1]
-        if end > n:
+        # Select SHAP rows whose end_index falls within this regime
+        regime_mask = (end_indices >= start) & (end_indices < end)
+        if regime_mask.sum() == 0:
             regime_corrs.append(np.nan)
             continue
-        s = shap_values[start:end].flatten()
-        t = true_values[start:end].flatten()
-        mask = ~(np.isnan(s) | np.isnan(t))
-        if mask.sum() > 10:
-            regime_corrs.append(float(np.corrcoef(s[mask], t[mask])[0, 1]))
+
+        s = shap_values[regime_mask].flatten()
+        # Look up true importances at the corresponding time indices
+        regime_indices = np.clip(end_indices[regime_mask], 0, len(true_values) - 1)
+        t = true_values[regime_indices].flatten()
+
+        valid = ~(np.isnan(s) | np.isnan(t))
+        if valid.sum() > 10:
+            regime_corrs.append(float(np.corrcoef(s[valid], t[valid])[0, 1]))
         else:
             regime_corrs.append(np.nan)
 
@@ -148,7 +172,7 @@ def plot_window_evolution(results_dir, figures_dir, rolling_window=10):
     scenario_info = get_scenario_info()
     colors = sns.color_palette("husl", len(scenario_info))
 
-    fig, axes = plt.subplots(4, 1, figsize=(10, 10), sharex=True, sharey=True)
+    fig, axes = plt.subplots(len(SCENARIO_DIRS), 1, figsize=(10, 10), sharex=True, sharey=True)
 
     for idx, (info, ax, color) in enumerate(zip(scenario_info, axes, colors)):
         windows = load_windows(results_dir, info['name'])
@@ -165,7 +189,6 @@ def plot_window_evolution(results_dir, figures_dir, rolling_window=10):
         ax.plot(time_index, windows, color=color, alpha=0.15, linewidth=0.8)
 
         # Rolling mean (bold)
-        valid_mask = ~np.isnan(windows)
         windows_series = pd.Series(windows)
         rolling_mean = windows_series.rolling(window=rolling_window, min_periods=1, center=True).mean()
         ax.plot(time_index, rolling_mean, color=color, linewidth=2.0, alpha=0.9)
@@ -174,20 +197,9 @@ def plot_window_evolution(results_dir, figures_dir, rolling_window=10):
         for bp in TRUE_BREAKPOINTS:
             ax.axvline(x=bp, color='#333333', linestyle='--', linewidth=1.2, alpha=0.5)
 
-        # Window mean annotation
-        valid_windows = windows[valid_mask]
-        if len(valid_windows) > 0:
-            mean_w = valid_windows.mean()
-            ax.axhline(y=mean_w, color=color, linestyle=':', linewidth=1.0, alpha=0.4)
-            ax.text(0.98, 0.92, f'$\\bar{{w}}$={mean_w:.0f}',
-                    transform=ax.transAxes, ha='right', va='top',
-                    fontsize=9, color=color,
-                    bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.8))
-
-        ax.set_ylabel('Window Size')
         ax.set_title(info['label'], loc='left', fontweight='bold')
-        ax.grid(True, alpha=0.2)
 
+    fig.text(-0.01, 0.5, 'Window Size', va='center', rotation='vertical')
     axes[-1].set_xlabel('Time Index')
 
     # Add breakpoint labels once at the top
@@ -197,39 +209,9 @@ def plot_window_evolution(results_dir, figures_dir, rolling_window=10):
 
     plt.tight_layout()
     save_path = figures_dir / 'fig1_window_evolution.png'
-    plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    plt.savefig(save_path, dpi=300, bbox_inches='tight', transparent=True)
     plt.close()
     print(f"  Saved: {save_path}")
-    save_pdf = figures_dir / 'fig1_window_evolution.pdf'
-    fig2, axes2 = plt.subplots(4, 1, figsize=(10, 10), sharex=True, sharey=True)
-    # Redraw for PDF
-    for idx, (info, ax, color) in enumerate(zip(scenario_info, axes2, colors)):
-        windows = load_windows(results_dir, info['name'])
-        if windows is None:
-            continue
-        time_index = np.arange(len(windows))
-        ax.plot(time_index, windows, color=color, alpha=0.15, linewidth=0.8)
-        windows_series = pd.Series(windows)
-        rolling_mean = windows_series.rolling(window=rolling_window, min_periods=1, center=True).mean()
-        ax.plot(time_index, rolling_mean, color=color, linewidth=2.0, alpha=0.9)
-        for bp in TRUE_BREAKPOINTS:
-            ax.axvline(x=bp, color='#333333', linestyle='--', linewidth=1.2, alpha=0.5)
-        valid_mask = ~np.isnan(windows)
-        valid_windows = windows[valid_mask]
-        if len(valid_windows) > 0:
-            mean_w = valid_windows.mean()
-            ax.axhline(y=mean_w, color=color, linestyle=':', linewidth=1.0, alpha=0.4)
-            ax.text(0.98, 0.92, f'$\\bar{{w}}$={mean_w:.0f}',
-                    transform=ax.transAxes, ha='right', va='top', fontsize=9, color=color,
-                    bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.8))
-        ax.set_ylabel('Window Size')
-        ax.set_title(info['label'], loc='left', fontweight='bold')
-        ax.grid(True, alpha=0.2)
-    axes2[-1].set_xlabel('Time Index')
-    plt.tight_layout()
-    plt.savefig(save_pdf, bbox_inches='tight')
-    plt.close()
-    print(f"  Saved: {save_pdf}")
 
 
 # ============================================================================
@@ -263,6 +245,8 @@ def plot_shap_correlation_bars(results_dir, datasets_base, figures_dir):
 
     # Get unique scenarios in order
     scenario_labels = [info['label'] for info in scenario_info]
+    tick_labels = ['Baseline' if info['t'] == 0.0 else f"{int(info['t']*100)}%"
+                   for info in scenario_info]
     regimes_present = sorted(df_valid['Regime'].unique())
 
     x = np.arange(len(scenario_labels))
@@ -289,12 +273,12 @@ def plot_shap_correlation_bars(results_dir, datasets_base, figures_dir):
                 ax.text(xi, v + 0.015, f'{v:.2f}', ha='center', va='bottom',
                         fontsize=8, color=palette[r_idx], fontweight='bold')
 
-    ax.set_xlabel('Scenario')
+    ax.set_xlabel('$\\ell_2$ Reduction')
     ax.set_ylabel('Pearson Correlation')
     ax.set_title('SHAP Fidelity vs True Feature Importances by Regime',
                  fontweight='bold')
     ax.set_xticks(x)
-    ax.set_xticklabels(scenario_labels, fontsize=9)
+    ax.set_xticklabels(tick_labels, fontsize=9)
     ax.legend(title='', framealpha=0.9, loc='upper right')
     ax.set_ylim(0, max(df_valid['Correlation'].max() * 1.15, 0.6))
     ax.grid(True, axis='y', alpha=0.2)
@@ -302,7 +286,7 @@ def plot_shap_correlation_bars(results_dir, datasets_base, figures_dir):
     ax.spines['right'].set_visible(False)
 
     plt.tight_layout()
-    for ext in ['png', 'pdf']:
+    for ext in ['png']:
         save_path = figures_dir / f'fig2_shap_correlation.{ext}'
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
         print(f"  Saved: {save_path}")
@@ -399,11 +383,99 @@ def plot_method_comparison(results_dir, figures_dir):
     ax2.spines['right'].set_visible(False)
 
     plt.tight_layout()
-    for ext in ['png', 'pdf']:
+    for ext in ['png']:
         save_path = figures_dir / f'fig3_method_comparison.{ext}'
         plt.savefig(save_path, dpi=300, bbox_inches='tight')
         print(f"  Saved: {save_path}")
     plt.close()
+
+
+# ============================================================================
+# FIGURE 4: Oracle Window MAE + SHAP Correlation per Regime (line plots)
+# ============================================================================
+
+def plot_l2_vs_oracle_and_shap(results_dir, datasets_base, figures_dir):
+    """
+    Two subplots vs L2 distance:
+      Left:  MAE to oracle window (single line with annotations).
+      Right: SHAP correlation per regime (one line per regime, Fig 3 style).
+    """
+    scenario_info = get_scenario_info()
+    regime_palette = sns.color_palette("husl", 3)
+    regime_markers = ['o', 's', 'D']
+
+    l2_values = []
+    mae_values = []
+    regime_corrs = {0: [], 1: [], 2: []}
+
+    for info in scenario_info:
+        # --- Oracle MAE ---
+        windows = load_windows(results_dir, info['name'])
+        if windows is not None:
+            n = len(windows)
+            oracle = compute_oracle_window(n, TRUE_BREAKPOINTS)
+            valid_mask = ~np.isnan(windows)
+            if valid_mask.sum() > 0:
+                mae = float(np.mean(np.abs(windows[valid_mask] - oracle[valid_mask])))
+            else:
+                mae = np.nan
+        else:
+            mae = np.nan
+
+        # --- SHAP correlation per regime ---
+        corrs = load_shap_correlation(results_dir, info['name'], datasets_base)
+
+        l2_values.append(info['max_l2'])
+        mae_values.append(mae)
+        for r in range(3):
+            regime_corrs[r].append(corrs[r])
+
+    l2_arr = np.array(l2_values)
+    mae_arr = np.array(mae_values)
+
+    if np.all(np.isnan(mae_arr)):
+        print("  No data found for oracle MAE / SHAP correlation plot.")
+        return
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+
+    # ---- Left: Oracle MAE vs L2 ----
+    ax1.plot(l2_arr, mae_arr, marker='o', markersize=8, linewidth=2.0,
+             color='#2E8B57', zorder=5)
+    for x, y, info in zip(l2_arr, mae_arr, scenario_info):
+        if np.isnan(y):
+            continue
+        label = 'BL' if info['t'] == 0.0 else f"{int(info['t']*100)}%"
+        ax1.annotate(label, (x, y), textcoords='offset points',
+                     xytext=(0, 10), ha='center', fontsize=8, color='#555555')
+
+    ax1.set_xlabel('Max Pairwise $\\ell_2$ Distance')
+    ax1.set_ylabel('MAE to Oracle Window')
+    ax1.set_title('Window Accuracy vs Regime Separation', fontweight='bold')
+    ax1.invert_xaxis()
+    ax1.spines['top'].set_visible(False)
+    ax1.spines['right'].set_visible(False)
+
+    # ---- Right: SHAP Correlation per Regime vs L2 (line plot) ----
+    for r in range(3):
+        vals = np.array(regime_corrs[r])
+        ax2.plot(l2_arr, vals, marker=regime_markers[r], markersize=8,
+                 linewidth=2.0, color=regime_palette[r],
+                 label=f'Regime {r}', zorder=5)
+
+    ax2.set_xlabel('Max Pairwise $\\ell_2$ Distance')
+    ax2.set_ylabel('Pearson Correlation')
+    ax2.set_title('SHAP Fidelity per Regime vs Regime Separation', fontweight='bold')
+    ax2.legend(frameon=False, loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=3)
+    ax2.invert_xaxis()
+    ax2.spines['top'].set_visible(False)
+    ax2.spines['right'].set_visible(False)
+
+    plt.tight_layout()
+    save_path = figures_dir / 'fig4_oracle_and_shap.png'
+    plt.savefig(save_path, dpi=300, bbox_inches='tight', transparent=True)
+    plt.close()
+    print(f"  Saved: {save_path}")
 
 
 # ============================================================================
@@ -437,11 +509,14 @@ def main():
     print("Figure 1: Window Size Evolution...")
     plot_window_evolution(results_dir, figures_dir)
 
-    print("\nFigure 2: SHAP Correlation per Regime...")
+    print("\nFigure 2: SHAP Correlation per Regime (bars)...")
     plot_shap_correlation_bars(results_dir, datasets_base, figures_dir)
 
     print("\nFigure 3: Method Comparison...")
     plot_method_comparison(results_dir, figures_dir)
+
+    print("\nFigure 4: Oracle Window MAE + SHAP Correlation...")
+    plot_l2_vs_oracle_and_shap(results_dir, datasets_base, figures_dir)
 
     print("\nDone!")
 

@@ -27,8 +27,8 @@ datasets=(
 #    "piecewise_ar3"
     "arx_rotating"
     "trend_season"
-    "piecewise_ar3_long"
-    "arx_rotating_long"
+#    "piecewise_ar3_long"
+#    "arx_rotating_long"
 )
 
 # Configuration (matching lstm_simulation.py defaults and 01_lpa_sensitivity.py)
@@ -40,7 +40,7 @@ NUM_RUNS=1
 GROWTH="geometric"
 GROWTH_BASE=1.41421356237     # sqrt(2)
 MC_REPS=300
-PENALTY_FACTOR=0.0
+PENALTY_FACTOR=0.1
 
 # Track results
 declare -a window_results

@@ -53,10 +53,10 @@ REDUCTION_FACTORS = [0.0, 0.10, 0.20, 0.30, 0.40, 0.50, 0.75, 0.90]
 LPA_CONFIG = {
     'N0': 100,
     'alpha': 0.95,
-    'mc_reps': 300,
-    'penalty_factor': 0.1,
+    'mc_reps': 100,
+    'penalty_factor': 0.0,
     'growth': 'geometric',
-    'growth_base': 1.41421356237,
+    'growth_base': 1.414,
     'search_step': 1,
     'min_seg': 4,
 }
