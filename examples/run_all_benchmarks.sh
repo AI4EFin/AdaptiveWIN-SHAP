@@ -8,9 +8,9 @@ echo ""
 
 # Array of all datasets (matching run_all_simulations.sh)
 datasets=(
-    "piecewise_ar3"
+#    "piecewise_ar3"
 #    "arx_rotating"
-#    "trend_season"
+    "trend_season"
 #    "piecewise_ar3_long"
 #    "arx_rotating_long"
 )
@@ -18,7 +18,7 @@ datasets=(
 # Configuration (must match run_all_simulations.sh)
 N0=100
 JUMP=1
-ROLLING_MEAN_WINDOW=75
+ROLLING_MEAN_WINDOW=10
 GROWTH="geometric"
 PENALTY_FACTOR=0.1
 

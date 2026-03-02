@@ -56,8 +56,8 @@ N0 = 168
 JUMP = 1
 STEP = 5
 ALPHA = 0.95
-MC_REPS = 50        # reduced from 100 for faster test
-PENALTY_FACTOR = 0.15
+MC_REPS = 100        # reduced from 100 for faster test
+PENALTY_FACTOR = 0.2
 MIN_SEG = 4
 
 

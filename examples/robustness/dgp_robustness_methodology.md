@@ -11,9 +11,9 @@ $$
 where $k \in \{0, 1, 2\}$ denotes the active regime and the coefficient vectors are:
 
 $$
-\boldsymbol{\phi}^{(0)} = (0.90,\; 0.01,\; 0.01), \quad
-\boldsymbol{\phi}^{(1)} = (0.01,\; 0.90,\; 0.01), \quad
-\boldsymbol{\phi}^{(2)} = (0.01,\; 0.01,\; 0.90)
+\phi^{(0)} = (0.90,\; 0.01,\; 0.01), \quad
+\phi^{(1)} = (0.01,\; 0.90,\; 0.01), \quad
+\phi^{(2)} = (0.01,\; 0.01,\; 0.90)
 $$
 
 Breakpoints occur at $t = 500$ and $t = 1000$.
@@ -21,7 +21,7 @@ Breakpoints occur at $t = 500$ and $t = 1000$.
 The maximum pairwise $\ell_2$ distance between any two regimes is:
 
 $$
-d_{\max} = \max_{i \neq j} \|\boldsymbol{\phi}^{(i)} - \boldsymbol{\phi}^{(j)}\|_2 = \|(0.89, -0.89, 0)\|_2 = 0.89\sqrt{2} \approx 1.259
+d_{\max} = \max_{i \neq j} \|\phi^{(i)} -\phi^{(j)}\|_2 = \|(0.89, -0.89, 0)\|_2 = 0.89\sqrt{2} \approx 1.259
 $$
 
 
@@ -31,20 +31,20 @@ To systematically reduce regime contrast, we interpolate each regime's coefficie
 
 ### 2.1 Centroid
 
-The centroid $\bar{\boldsymbol{\phi}}$ is the elementwise mean of the three baseline regimes:
+The centroid $\bar{\phi}$ is the elementwise mean of the three baseline regimes:
 
 $$
-\bar{\boldsymbol{\phi}} = \frac{1}{3}\sum_{k=0}^{2} \boldsymbol{\phi}^{(k)} = \left(\frac{0.92}{3},\; \frac{0.92}{3},\; \frac{0.92}{3}\right) \approx (0.3067,\; 0.3067,\; 0.3067)
+\bar{\phi} = \frac{1}{3}\sum_{k=0}^{2} \phi^{(k)} = \left(\frac{0.92}{3},\; \frac{0.92}{3},\; \frac{0.92}{3}\right) \approx (0.3067,\; 0.3067,\; 0.3067)
 $$
 
-Note that $\bar{\boldsymbol{\phi}}$ lies at equal distance from all three vertices, so interpolating toward it shrinks the regime differences uniformly.
+Note that $\bar{\phi}$ lies at equal distance from all three vertices, so interpolating toward it shrinks the regime differences uniformly.
 
 ### 2.2 Interpolation Formula
 
 For a reduction factor $\tau \in [0, 1]$, the modified regime coefficients are:
 
 $$
-\boldsymbol{\phi}^{(k)}_\tau = (1 - \tau)\,\boldsymbol{\phi}^{(k)} + \tau\,\bar{\boldsymbol{\phi}}, \quad k = 0, 1, 2
+\phi^{(k)}_\tau = (1 - \tau)\,\phi^{(k)} + \tau\,\bar{\phi}, \quad k = 0, 1, 2
 $$
 
 - $\tau = 0$: baseline (no change)

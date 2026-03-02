@@ -69,9 +69,9 @@ def get_scenario_info():
         max_l2 = compute_max_pairwise_l2(regimes)
         name = 'baseline' if t == 0.0 else f'l2_{int(t * 100)}'
         if t == 0.0:
-            label = f'Baseline ($\\ell_2$={max_l2:.2f})'
+            label = f'Baseline ($L_2$={max_l2:.2f})'
         else:
-            label = f'{int(t*100)}% reduction ($\\ell_2$={max_l2:.2f})'
+            label = f'{int(t*100)}% reduction ($L_2$={max_l2:.2f})'
         info.append({'name': name, 'label': label, 't': t, 'max_l2': max_l2})
     return info
 
@@ -273,7 +273,7 @@ def plot_shap_correlation_bars(results_dir, datasets_base, figures_dir):
                 ax.text(xi, v + 0.015, f'{v:.2f}', ha='center', va='bottom',
                         fontsize=8, color=palette[r_idx], fontweight='bold')
 
-    ax.set_xlabel('$\\ell_2$ Reduction')
+    ax.set_xlabel('$L_2$ Reduction')
     ax.set_ylabel('Pearson Correlation')
     ax.set_title('SHAP Fidelity vs True Feature Importances by Regime',
                  fontweight='bold')
@@ -351,7 +351,7 @@ def plot_method_comparison(results_dir, figures_dir):
                  label=METHOD_LABELS[method], zorder=zorder,
                  alpha=1.0 if is_ours else 0.7)
 
-    ax1.set_xlabel('Max Pairwise $\\ell_2$ Distance')
+    ax1.set_xlabel('Max Pairwise $L_2$ Distance')
     ax1.set_ylabel('Faithfulness Score (higher = better)')
     ax1.set_title('Faithfulness (Perturbation p50)', fontweight='bold')
     ax1.legend(framealpha=0.9, loc='best')
@@ -373,7 +373,7 @@ def plot_method_comparison(results_dir, figures_dir):
                  label=METHOD_LABELS[method], zorder=zorder,
                  alpha=1.0 if is_ours else 0.7)
 
-    ax2.set_xlabel('Max Pairwise $\\ell_2$ Distance')
+    ax2.set_xlabel('Max Pairwise $L_2$ Distance')
     ax2.set_ylabel('Ablation MIF Score (higher = better)')
     ax2.set_title('Ablation: Most Important First (p50)', fontweight='bold')
     ax2.legend(framealpha=0.9, loc='best')
@@ -449,7 +449,7 @@ def plot_l2_vs_oracle_and_shap(results_dir, datasets_base, figures_dir):
         ax1.annotate(label, (x, y), textcoords='offset points',
                      xytext=(0, 10), ha='center', fontsize=8, color='#555555')
 
-    ax1.set_xlabel('Max Pairwise $\\ell_2$ Distance')
+    ax1.set_xlabel('Max Pairwise $L_2$ Distance')
     ax1.set_ylabel('MAE to Oracle Window')
     ax1.set_title('Window Accuracy vs Regime Separation', fontweight='bold')
     ax1.invert_xaxis()
@@ -463,7 +463,7 @@ def plot_l2_vs_oracle_and_shap(results_dir, datasets_base, figures_dir):
                  linewidth=2.0, color=regime_palette[r],
                  label=f'Regime {r}', zorder=5)
 
-    ax2.set_xlabel('Max Pairwise $\\ell_2$ Distance')
+    ax2.set_xlabel('Max Pairwise $L_2$ Distance')
     ax2.set_ylabel('Pearson Correlation')
     ax2.set_title('SHAP Fidelity per Regime vs Regime Separation', fontweight='bold')
     ax2.legend(frameon=False, loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=3)

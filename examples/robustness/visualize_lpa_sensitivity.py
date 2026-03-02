@@ -207,7 +207,7 @@ def load_results_from_configs(
 
 # Parameters to plot (skip alpha since only one value was tested)
 PARAM_COLS = ['N0', 'mc_reps', 'penalty_factor']
-PARAM_LABELS = {'N0': r'$N_0$', 'mc_reps': r'$B$', 'penalty_factor': r'$\lambda$'}
+PARAM_LABELS = {'N0': r'$I_0$', 'mc_reps': r'$B$', 'penalty_factor': r'$\lambda$'}
 
 
 def _setup_clean_ax(ax):

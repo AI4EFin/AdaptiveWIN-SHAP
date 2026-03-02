@@ -8,9 +8,9 @@ echo ""
 
 # Array of all datasets (matching run_all_benchmarks.sh)
 datasets=(
-    "piecewise_ar3"
+#    "piecewise_ar3"
 #    "arx_rotating"
-#    "trend_season"
+    "trend_season"
 #    "piecewise_ar3_long"
 #    "arx_rotating_long"
 )
