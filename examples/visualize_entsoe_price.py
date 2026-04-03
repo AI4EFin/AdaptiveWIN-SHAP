@@ -47,18 +47,18 @@ sns.set_palette("colorblind")
 #   - "Morning ramp" captures the demand ramp-up effect on price
 #   - "Night/previous day" captures the day-ahead cycle
 LAG_GROUPS = {
-    'Previous day (19-24h)': list(range(19, 25)),
-    'Morning ramp (13-18h)': list(range(13, 19)),
-    'Midday peak (10-12h)': list(range(10, 13)),
-    'Afternoon (5-9h)': list(range(5, 10)),
+    '19-24h': list(range(19, 25)),
+    '13-18h': list(range(13, 19)),
+    '10-12h': list(range(10, 13)),
+    '5-9h': list(range(5, 10)),
     'Recent (1-4h)': list(range(1, 5)),
 }
 
 GROUP_COLORS = {
-    'Previous day (19-24h)': '#1f77b4',
-    'Morning ramp (13-18h)': '#ff7f0e',
-    'Midday peak (10-12h)': '#2ca02c',
-    'Afternoon (5-9h)': '#d62728',
+    '19-24h': '#1f77b4',
+    '13-18h': '#ff7f0e',
+    '10-12h': '#2ca02c',
+    '5-9h': '#d62728',
     'Recent (1-4h)': '#9467bd',
 }
 
@@ -246,8 +246,8 @@ def plot_grouped_lag_importance(paths, smoothing_window=168):
     ax.set_ylabel('Relative Importance (proportion)')
     ax.set_title('ENTSO-E Romania Price: Grouped Lag Importance Over Time')
     ax.set_ylim(0, 1)
-    ax.legend(loc='center left', bbox_to_anchor=(1.01, 0.5), frameon=True)
-    ax.grid(True, alpha=0.2, linestyle='--')
+    ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.15), ncol=3, frameon=False)
+    # ax.grid(True, alpha=0.2, linestyle='--')
     fig.tight_layout()
 
     save_path = os.path.join(paths['figures_dir'], 'grouped_lag_importance.png')
@@ -260,7 +260,7 @@ def plot_grouped_lag_importance(paths, smoothing_window=168):
 # Plot 4: Benchmark Comparison
 # ============================================================
 def plot_benchmark_comparison(paths):
-    """Faithfulness and ablation bar chart comparing all methods."""
+    """Perturbation-based faithfulness bar chart comparing all methods."""
     summary_path = paths['benchmark_summary_csv']
     if not os.path.exists(summary_path):
         print(f"Benchmark summary not found: {summary_path}")
@@ -272,8 +272,18 @@ def plot_benchmark_comparison(paths):
         print("Benchmark summary is empty.")
         return None
 
-    faith_df = summary[summary['metric_type'] == 'faithfulness'].copy()
-    ablation_df = summary[summary['metric_type'] == 'ablation'].copy()
+    # Keep only perturbation-based faithfulness
+    faith_df = summary[
+        (summary['metric_type'] == 'faithfulness') &
+        (summary['evaluation'].str.startswith('prtb'))
+    ].copy()
+
+    if faith_df.empty:
+        print("No perturbation faithfulness metrics found.")
+        return None
+
+    # Rename prtb_* -> faith_*
+    faith_df['evaluation'] = faith_df['evaluation'].str.replace('prtb_', 'faith_', regex=False)
 
     method_labels = {
         'global_shap': 'GlobalSHAP',
@@ -285,36 +295,29 @@ def plot_benchmark_comparison(paths):
         'adaptive_shap_mean': 'Adaptive (Mean)',
     }
 
-    n_plots = sum([len(faith_df) > 0, len(ablation_df) > 0])
-    if n_plots == 0:
-        print("No metrics found in benchmark summary.")
-        return None
+    ablation_df = summary[summary['metric_type'] == 'ablation'].copy()
 
+    n_plots = 1 + (len(ablation_df) > 0)
     fig, axes = plt.subplots(1, n_plots, figsize=(7 * n_plots, 6))
     if n_plots == 1:
         axes = [axes]
 
-    plot_idx = 0
+    # Left panel: perturbation faithfulness
+    ax = axes[0]
+    pivot = faith_df.pivot(index='method', columns='evaluation', values='score')
+    pivot.index = [method_labels.get(m, m) for m in pivot.index]
+    pivot = pivot.reindex([v for v in method_labels.values() if v in pivot.index])
 
-    if len(faith_df) > 0:
-        ax = axes[plot_idx]
-        plot_idx += 1
+    pivot.plot(kind='bar', ax=ax, edgecolor='black', alpha=0.8)
+    ax.set_ylabel('Faithfulness Score')
+    ax.set_title('Faithfulness Comparison')
+    ax.set_xlabel('')
+    ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.25), ncol=3, frameon=False)
+    ax.set_xticklabels(ax.get_xticklabels(), rotation=30, ha='right')
 
-        pivot = faith_df.pivot(index='method', columns='evaluation', values='score')
-        pivot.index = [method_labels.get(m, m) for m in pivot.index]
-        pivot = pivot.reindex([v for v in method_labels.values() if v in pivot.index])
-
-        pivot.plot(kind='bar', ax=ax, edgecolor='black', alpha=0.8)
-        ax.set_ylabel('Faithfulness Score')
-        ax.set_title('Faithfulness Comparison')
-        ax.set_xlabel('')
-        ax.legend(title='Evaluation', fontsize=8, title_fontsize=9)
-        ax.grid(True, alpha=0.3, linestyle='--', axis='y')
-        ax.set_xticklabels(ax.get_xticklabels(), rotation=30, ha='right')
-
+    # Right panel: ablation (MIF/LIF)
     if len(ablation_df) > 0:
-        ax = axes[plot_idx]
-
+        ax = axes[1]
         pivot = ablation_df.pivot(index='method', columns='evaluation', values='score')
         pivot.index = [method_labels.get(m, m) for m in pivot.index]
         pivot = pivot.reindex([v for v in method_labels.values() if v in pivot.index])
@@ -323,8 +326,7 @@ def plot_benchmark_comparison(paths):
         ax.set_ylabel('Ablation Score')
         ax.set_title('Ablation Comparison (MIF/LIF)')
         ax.set_xlabel('')
-        ax.legend(title='Evaluation', fontsize=8, title_fontsize=9)
-        ax.grid(True, alpha=0.3, linestyle='--', axis='y')
+        ax.legend(loc='upper center', bbox_to_anchor=(0.5, -0.25), ncol=6, frameon=False)
         ax.set_xticklabels(ax.get_xticklabels(), rotation=30, ha='right')
 
     fig.suptitle('ENTSO-E Romania Price: Benchmark Comparison', fontsize=13, fontweight='bold', y=1.02)
